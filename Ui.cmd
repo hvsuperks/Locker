@@ -10,18 +10,8 @@ set VERSION=%VERSION:"=%
 set EXENAME=Ui_%VERSION%.exe
 echo Version: %VERSION%
 pause
-pyinstaller ^
-  --onedir ^
-  --icon=logo.ico ^
-  --add-data "D:\Code\App_Dac_Tinh\Module9\Ui\logo.ico;_internal" ^
-  --workpath "D:\Code\App_Dac_Tinh\Build\build" ^
-  --distpath "D:\Code\App_Dac_Tinh\Build\Release" ^
-  --specpath "D:\Code\App_Dac_Tinh\Build\Temp" ^
-  --noconsole ^
-  --name "Ui_%VERSION%" ^
-  main.py  
+pyinstaller --onedir --icon=logo.ico --add-data "logo.ico;." --noconsole --name "Ui_%VERSION%" main.py        
 
-cd /d "D:\Code\App_Dac_Tinh\Build"
-
+cd /d "dist\Ui_%VERSION%"
 curl -X POST "http://172.16.219.251:50001/api/update" -F "myFile=@%EXENAME%"
 pause

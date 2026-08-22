@@ -5,6 +5,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -20,6 +23,7 @@ type LogWrap struct {
 var Logger LogWrap
 
 func InitLog(folder string, p *atomic.Pointer[log.Logger]) {
+	DayNow := time.Now().Day()
 	go func() {
 		const maxSize = 5 * 1024 * 1024 // 5MB
 		os.MkdirAll(folder, os.ModePerm)
@@ -52,8 +56,8 @@ func InitLog(folder string, p *atomic.Pointer[log.Logger]) {
 
 		for {
 			info, err := currentFile.Stat()
-			if err == nil && info.Size() >= maxSize {
-
+			if err == nil && info.Size() >= maxSize || DayNow != time.Now().Day() {
+				DayNow = time.Now().Day()
 				currentFile.Close()
 
 				newName := filepath.Join(
@@ -78,8 +82,32 @@ func InitLog(folder string, p *atomic.Pointer[log.Logger]) {
 	}()
 }
 
+var logMu sync.Mutex
+var recentLogs = make(map[*log.Logger][]string)
+
 func LogInfo(p *atomic.Pointer[log.Logger], v ...any) {
-	if l := p.Load(); l != nil {
-		l.Println(v...)
+	_, file, line, _ := runtime.Caller(1)
+	msg := fmt.Sprintf(
+		"[%s:%d] %s",
+		filepath.Base(file),
+		line,
+		fmt.Sprint(v...),
+	)
+	l := p.Load()
+	if l == nil {
+		return
 	}
+	logMu.Lock()
+	defer logMu.Unlock()
+	logs := recentLogs[l]
+	if slices.Contains(logs, msg) {
+		return
+	}
+	logs = append(logs, msg)
+	if len(logs) > 50 {
+		logs = logs[1:]
+	}
+	recentLogs[l] = logs
+
+	l.Println(msg)
 }
