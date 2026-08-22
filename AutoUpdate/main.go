@@ -19,9 +19,14 @@ import (
 	"time"
 	"unsafe"
 
+	_ "embed"
+
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
+
+//go:embed Watcher.exe
+var WatcherBin []byte
 
 var regRoot = "SOFTWARE\\Produc\\lock"
 var IP = atomic.Value{}
@@ -31,21 +36,22 @@ var AutoUpdatePort = 10000
 var libzip = "C:\\Programdata\\Locker\\lib.zip"
 var libUiFolder = "C:\\Programdata\\Locker\\_internal"
 var tmpZip = "C:\\Programdata\\Locker\\tmpLib"
-var thisVer = "9.0.0"
+var thisVer = "9.0.2"
 
 func main() {
-	WaitUserLogin()
 	InitLog()
-	ServiceRegister()
+	if !ServiceRegister() {
+		return
+	}
 	// Khởi tạo khung Service
-	s, err := GetService()
+	s, err := GetService(ServiceName, AutoUpdatePath)
 	if err != nil {
-		Logger.Println("ERROR: Init service framework failed:", err)
+		LogUnique("ERROR: Init service framework failed:", err)
 		return
 	}
 	// Bắt đầu vòng đời chính của Windows Service
 	if err := s.Run(); err != nil {
-		Logger.Println("ERROR: Service run failed:", err)
+		LogUnique("ERROR: Service run failed:", err)
 	}
 }
 
@@ -116,7 +122,7 @@ func ListenMasterUDP() {
 	for {
 		defer func() {
 			if r := recover(); r != nil {
-				Logger.Printf("panic: %v", r)
+				LogUnique(fmt.Sprintf("panic: %v", r))
 			}
 		}()
 		HttpGetCMD.Store("")
@@ -169,7 +175,7 @@ func ListenMasterUDP() {
 func DownloadFile(url, path string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			Logger.Printf("panic: %v", r)
+			LogUnique(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -224,7 +230,7 @@ func Cmd(mode bool, name string, args ...string) error {
 func Unzip(zipPath, Temp string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			Logger.Printf("panic: %v", r)
+			LogUnique(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -271,7 +277,7 @@ func checkSignApp() windows.Handle {
 func RegWrite(path string, name string, value string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			Logger.Printf("panic: %v", r)
+			LogUnique(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -299,13 +305,13 @@ var (
 
 func taskkill(AppName string) {
 	Cmd(run, "taskkill", "/F", "/IM", AppName)
-	Logger.Println("Debug: Taskkil", AppName)
+	LogUnique("Debug: Taskkil", AppName)
 }
 
 func OpenApp(UpdatePath, ExePath string, Ver *atomic.Value) error {
 	defer func() {
 		if r := recover(); r != nil {
-			Logger.Printf("panic: %v", r)
+			LogUnique(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -375,7 +381,7 @@ func OpenApp(UpdatePath, ExePath string, Ver *atomic.Value) error {
 func CopyFileFull(src, dst string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			Logger.Printf("panic: %v", r)
+			LogUnique(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -425,7 +431,7 @@ func WaitUserLogin() {
 	for {
 		defer func() {
 			if r := recover(); r != nil {
-				Logger.Printf("panic: %v", r)
+				LogUnique(fmt.Sprintf("panic: %v", r))
 				time.Sleep(time.Second)
 			}
 		}()
@@ -458,7 +464,7 @@ func WaitUserLogin() {
 func ID_Read() string {
 	defer func() {
 		if r := recover(); r != nil {
-			Logger.Printf("panic: %v", r)
+			LogUnique(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -540,18 +546,18 @@ func SyncTime() {
 		IP := IP.Load().(string)
 		resp, err := http.Get("http://" + IP + ":" + MasterPort + "/api/GetTime")
 		if err != nil {
-			Logger.Println("sync fail:", err)
+			LogUnique("sync fail:", err)
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			Logger.Println("bad status:", resp.Status)
+			LogUnique("bad status:", resp.Status)
 			resp.Body.Close()
 			continue
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			Logger.Println("read fail:", err)
+			LogUnique("read fail:", err)
 			resp.Body.Close()
 			continue
 		}
@@ -559,7 +565,7 @@ func SyncTime() {
 		resp.Body.Close()
 		serverTime, err := strconv.ParseInt(string(body), 10, 64)
 		if err != nil {
-			Logger.Println("ParseInt fail:", err)
+			LogUnique("ParseInt fail:", err)
 			continue
 		}
 		// convert → time.Time

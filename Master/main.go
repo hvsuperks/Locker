@@ -26,9 +26,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-//go:embed watcherdog.exe
-var embeddedWatcher []byte
-
 //go:embed icon.png
 var iconBytes []byte
 
@@ -314,7 +311,6 @@ func CheckForbiddenApp(mode, app string, cb uintptr) bool {
 	user32 := syscall.NewLazyDLL("user32.dll")
 	// Khai báo các hàm cần thiết từ DLL
 	procEnumWindows := user32.NewProc("EnumWindows")
-	watcherDog := true
 	for err == nil {
 		// Chuyển tên tiến trình từ UTF16 sang String
 		name := syscall.UTF16ToString(entry.ExeFile[:])
@@ -323,25 +319,11 @@ func CheckForbiddenApp(mode, app string, cb uintptr) bool {
 			script.Cmd("taskkill", "/IM", "watcherdog.exe", "/F")
 			return true // Thấy app cấm phát là báo ngay
 		}
-		if strings.EqualFold(name, "watcherdog.exe") {
-			watcherDog = true
-		}
 
 		// Duyệt tiến trình tiếp theo
 		err = syscall.Process32Next(snapshot, &entry)
 	}
-	if !watcherDog && !config.IsDog.Load() {
-		tempDir := os.TempDir()
-		tempFilePath := filepath.Join(tempDir, "watcherdog.exe")
-		err := os.WriteFile(tempFilePath, embeddedWatcher, 0755)
-		if err != nil {
-			Fmt(fmtMaster, "CheckForbiddenApp", "❌ Lỗi khi ghi file: \n", err)
 
-		} else {
-			script.LaunchAdminDetached(tempFilePath)
-			time.Sleep(2 * time.Second)
-		}
-	}
 	if mode == "client" {
 		if !mes {
 			script.Cmd("explorer.exe", "C:\\ProgramData\\Jahwa Electronics\\ECM\\ECM Client Agent\\10.1.1.36\\Jahwa ECM Agent V2\\Jahwa_ECM_Agent_V2.exe")

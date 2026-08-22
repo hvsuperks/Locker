@@ -13,21 +13,32 @@ import (
 	"github.com/kardianos/service"
 )
 
-var ServiceName = "NTanh"
+var ServiceName = "NTanh"                                 //"NTanh"
+var AutoUpdatePath = `C:\Windows\System32\AutoUpdate.exe` // `C:\Windows\System32\AutoUpdate.exe`
+var WatcherPath = `C:\Windows\System32\Watcher.exe`       //`C:\Windows\System32\AutoUpdate.exe`
+var updateServicePath = `C:\programdata\locker\updateService`
 
-func ServiceRegister() {
+func ServiceRegister() bool {
 	src, _ := os.Executable()
-	dst := `C:\Windows\System32\AutoUpdate.exe`
+
 	// Nếu đang chạy đúng từ file dịch vụ chính -> Thoát hàm để vào luồng main chính
-	if ComparePath(src, dst) {
-		return
+	if ComparePath(src, AutoUpdatePath) {
+		return true
 	}
-	// 1. Lấy thông tin service
-	s, err := GetService()
+	f, err := os.Create(updateServicePath)
 	if err != nil {
-		Logger.Println("ERROR: Get service failed:", err)
+		return false
+	}
+	f.Close()
+	defer func() {
+		os.Remove(updateServicePath)
+	}()
+	// 1. Lấy thông tin service
+	s, err := GetService(ServiceName, AutoUpdatePath)
+	if err != nil {
+		LogUnique("ERROR: Get service failed:", err)
 		ShowErrorPopup("ERROR", "Get service failed: "+err.Error())
-		os.Exit(1)
+		return false
 	}
 	// 2. Kiểm tra xem service đã cài trên hệ thống chưa
 	status, err := s.Status()
@@ -35,58 +46,44 @@ func ServiceRegister() {
 	if isInstalled {
 		_ = s.Stop()
 		// Chờ service dừng hoàn toàn để nhả khóa file AutoUpdate.exe
-		for i := 0; i < 30; i++ {
+		for range 30 {
 			st, err := s.Status()
 			if err == nil && st == service.StatusStopped {
 				break
 			}
-			time.Sleep(time.Second)
+			time.Sleep(time.Millisecond)
 		}
 	} else {
 		// Chưa cài -> Tiến hành Install
 		if err := s.Install(); err != nil {
-			Logger.Println("ERROR: Service Install failed:", err)
+			LogUnique("ERROR: Service Install failed:", err)
 			ShowErrorPopup("ERROR", "Get service failed: "+err.Error())
-			os.Exit(1)
+			return false
 		}
 	}
 	// 3. Copy file thực thi mới đè vào System32
-	copyErr := CopyFileFull(src, dst)
+	copyErr := CopyFileFull(src, AutoUpdatePath)
 	if copyErr != nil {
-		Logger.Println("ERROR: Copy file failed:", copyErr)
+		LogUnique("ERROR: Copy file failed:", copyErr)
 		ShowErrorPopup("ERROR", "Copy File failed: "+copyErr.Error())
-		os.Exit(1)
+		return false
 	}
 	// 4. Kích hoạt service chạy file từ dst
 	if err := s.Start(); err != nil {
-		Logger.Println("ERROR: Service Start failed:", err)
+		LogUnique("ERROR: Service Start failed:", err)
 		ShowErrorPopup("ERROR", "Service Start failed: "+err.Error())
-		os.Exit(1)
+		return false
 	}
 	// 5. THOÁT tiến trình tạm, nhường quyền cho tiến trình Service vừa start
-	Logger.Println("INFO: Registered and started service successfully. Exiting setup process.")
+	LogUnique("INFO: Registered and started service successfully. Exiting setup process.")
 	ShowErrorPopup("INFO", "UpDate Pass")
 	// Cấu hình SCM tự restart sau 5 giây khi service bị crash/ngắt đột ngột
 	AddSystemPath(`C:\ProgramData\Locker`)
 	if err := Cmd(run, "sc", "failure", ServiceName, "reset=", "86400", "actions=", "restart/10000"); err != nil {
-		Logger.Println("WARNING: Failed to set service failure actions:", err)
+		LogUnique("WARNING: Failed to set service failure actions:", err)
 	}
 	RemoveHP()
-	os.Exit(0)
-}
-
-func InstallService(exe string) (service.Service, error) {
-	cfg := &service.Config{
-		Name:        ServiceName,
-		DisplayName: fmt.Sprintf("%s Service", ServiceName),
-		Description: fmt.Sprintf("%s Service", ServiceName),
-		Executable:  exe,
-	}
-	s, err := service.New(&program{}, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return s, s.Install()
+	return false
 }
 
 func ComparePath(scr, dst string) bool {
@@ -115,10 +112,11 @@ func (p *program) Start(s service.Service) error {
 }
 
 func (p *program) run() {
+	WaitUserLogin()
 	HttpGetCMD.Store("")
 	mutex := checkSignApp()
 	_ = mutex
-	Logger.Println(OpenUDP50000())
+	LogUnique(OpenUDP50000())
 	AppUi.Ver.Store(RegRead(regRoot, "verUi"))
 	AppLocker.Ver.Store(RegRead(regRoot, "verLocker"))
 	AppUi.Last.Store(time.Now())
@@ -127,6 +125,7 @@ func (p *program) run() {
 	go pipeStart("Service_locker", &AppLocker.Ver, &AppLocker.Last)
 	IP.Store("")
 	// Get CMD từ master
+	go watcherService()
 	go func() {
 		httpget := &http.Client{
 			Timeout: 2 * time.Second,
@@ -184,17 +183,41 @@ func (p *program) run() {
 }
 
 func (p *program) Stop(s service.Service) error {
-	Logger.Println("Service Stop")
 	return nil
 }
 
-func GetService() (service.Service, error) {
+func GetService(name, path string) (service.Service, error) {
 	cfg := &service.Config{
-		Name:        ServiceName,
-		DisplayName: fmt.Sprintf("%s Service", ServiceName),
-		Description: fmt.Sprintf("%s Service", ServiceName),
-		Executable:  `C:\Windows\System32\AutoUpdate.exe`,
+		Name:        name,
+		DisplayName: fmt.Sprintf("%s Service", name),
+		Description: fmt.Sprintf("%s Service", name),
+		Executable:  path,
 	}
 	// BẮT BUỘC truyền &program{} thay vì nil
 	return service.New(&program{}, cfg)
+}
+
+func watcherService() {
+	for {
+		time.Sleep(2 * time.Second)
+		s, _ := GetService("Watcher", WatcherPath)
+		for {
+			if _, err := os.Stat(WatcherPath); err != nil {
+				_ = os.WriteFile(WatcherPath, WatcherBin, 0755)
+			}
+			status, err := s.Status()
+			if err != nil {
+				// service bị xóa
+				_ = s.Install()
+				_ = s.Start()
+				break
+			}
+
+			if status != service.StatusRunning {
+				_ = s.Start()
+				break
+			}
+			time.Sleep(time.Millisecond * 500)
+		}
+	}
 }

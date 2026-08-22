@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"sync/atomic"
 	"time"
@@ -8,18 +9,20 @@ import (
 	"github.com/Microsoft/go-winio"
 )
 
+var lastErr string
+
 func pipeStart(appname string, ver, last *atomic.Value) {
 	for {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					Logger.Printf("panic: %v", r)
+					LogUnique(fmt.Sprintf("panic: %v", r))
 					time.Sleep(time.Second)
 				}
 			}()
 			listener, err := winio.ListenPipe(`\\.\pipe\`+appname, nil)
 			if err != nil {
-				Logger.Println("ERROR: Pipe", `\\.\pipe\`+appname, err)
+				LogUnique("ERROR: Pipe", `\\.\pipe\`+appname, err)
 				return
 			}
 			for {
@@ -47,7 +50,6 @@ type AppStruct struct {
 	Ver        atomic.Value
 	Last       atomic.Value
 	UpdateChan chan string
-	CloseChan  chan struct{}
 }
 
 var AppUi = &AppStruct{
@@ -56,7 +58,6 @@ var AppUi = &AppStruct{
 	Ver:        atomic.Value{},
 	Last:       atomic.Value{},
 	UpdateChan: make(chan string, 30),
-	CloseChan:  make(chan struct{}, 50),
 }
 
 var AppLocker = &AppStruct{
@@ -65,14 +66,13 @@ var AppLocker = &AppStruct{
 	Ver:        atomic.Value{},
 	Last:       atomic.Value{},
 	UpdateChan: make(chan string, 30),
-	CloseChan:  make(chan struct{}, 50),
 }
 var isShutdownLocker = atomic.Bool{}
 
 func handleConn(conn net.Conn, ver, last *atomic.Value, appname string) {
 	defer func() {
 		if r := recover(); r != nil {
-			Logger.Printf("panic: %v", r)
+			LogUnique(fmt.Sprintf("panic: %v", r))
 		}
 	}()
 	defer conn.Close()
@@ -82,7 +82,7 @@ func handleConn(conn net.Conn, ver, last *atomic.Value, appname string) {
 		defer conn.Close()
 		defer func() {
 			if r := recover(); r != nil {
-				Logger.Printf("panic: %v", r)
+				LogUnique(fmt.Sprintf("panic: %v", r))
 				time.Sleep(time.Second)
 			}
 		}()
