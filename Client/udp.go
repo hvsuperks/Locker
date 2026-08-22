@@ -55,9 +55,7 @@ func ListenMasterUDP(Log chan []any) {
 			httpDownload.Store(fmt.Sprintf("http://%s:%s/master/", ip, config.MasterPort))
 			httpUpload.Store(fmt.Sprintf("http://%s:%s/api/upload", ip, config.MasterPort))
 		}
-		if msg.AutoUpdate != "" && msg.AutoUpdate != VerAutoUpdate.Load() {
-			AutoUpdateChange <- struct{}{}
-		}
+		AutoUpdateChange <- msg.AutoUpdate
 
 	}
 }
@@ -106,41 +104,42 @@ func OpenUDP10001() error {
 
 }
 
-var AutoUpdateChange = make(chan struct{}, 20)
+var AutoUpdateChange = make(chan string, 100)
 
 func AutoUpdate(ctx context.Context) {
 	ServiceConnectTime.Store(time.Now())
-	timer := time.NewTicker(1 * time.Second)
-	last := time.Now()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-AutoUpdateChange:
-			if time.Since(last) > 15*time.Second {
-				if script.DownloadFile(httpDownload.Load().(string)+"AutoUpdate.exe", `D:\autoupdate.exe`) == nil {
-					Cmd(run, `D:\autoupdate.exe`)
-					i := false
+		case v := <-AutoUpdateChange:
+			if v != VerAutoUpdate.Load().(string) {
+				if script.DownloadFile(fmt.Sprintf(`%sLockerService_%s.exe`, httpDownload.Load().(string), v), `D:\LockerService.exe`) == nil {
+					VerAutoUpdate.Store("")
+					ServiceStatus.Store(false)
+					Cmd(run, `D:\LockerService.exe`)
+					for i := range 32 {
+						if ServiceStatus.Load() {
+							break
+						}
+						if i >= 30 {
+							VerAutoUpdate.Store("")
+							break
+						}
+						time.Sleep(100 * time.Millisecond)
+					}
 					for {
 						select {
 						case <-AutoUpdateChange:
 						default:
-							i = true
-						}
-						if i {
-							break
+							goto done
 						}
 					}
-				}
-				last = time.Now()
-			}
-		case <-timer.C:
-			if !ServiceStatus.Load() {
-				lastoff := ServiceConnectTime.Load().(time.Time)
-				if time.Since(lastoff) > 15*time.Second {
-					AutoUpdateChange <- struct{}{}
+				done:
 				}
 			}
 		}
 	}
+
 }

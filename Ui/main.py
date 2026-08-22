@@ -4,14 +4,14 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 from PySide6.QtCore import Signal,QObject
-from Ui import MainWindow
+from Ui_main import MainWindow
 from upload import UploadFile
 from UploadMes import MesUpload
 from pipe import PIPE
 from GetCRC import CRCChecker
+from ver import ver
 
-VER = '9.1.4'
-
+VER = ver
 upload_root = r"D:\SendFile" #r"D:\SendFile"
 
 class SignalBus(QObject):

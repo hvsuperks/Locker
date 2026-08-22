@@ -36,7 +36,7 @@ var AutoUpdatePort = 10000
 var libzip = "C:\\Programdata\\Locker\\lib.zip"
 var libUiFolder = "C:\\Programdata\\Locker\\_internal"
 var tmpZip = "C:\\Programdata\\Locker\\tmpLib"
-var thisVer = "9.0.2"
+var thisVer = Ver
 
 func main() {
 	InitLog()
@@ -160,12 +160,12 @@ func ListenMasterUDP() {
 			}
 
 			if msg.UiLocker != "" && msg.UiLocker != AppUi.Ver.Load().(string) {
-				AppUi.UpdateChan <- fmt.Sprintf("%s/_internal.zip|%s/Ui_ver%s.exe", httpDownload, httpDownload, msg.UiLocker)
+				AppUi.UpdateChan <- fmt.Sprintf("%s/_internal.zip|%s/Ui_%s.exe", httpDownload, httpDownload, msg.UiLocker)
 
 			}
 
 			if msg.Locker != AppLocker.Ver.Load().(string) {
-				AppLocker.UpdateChan <- fmt.Sprintf("%s/setup_locker_ver%s.exe", httpDownload, msg.Locker)
+				AppLocker.UpdateChan <- fmt.Sprintf("%s/locker_%s.exe", httpDownload, msg.Locker)
 			}
 
 		}

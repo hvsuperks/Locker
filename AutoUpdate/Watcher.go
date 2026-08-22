@@ -14,9 +14,10 @@ import (
 
 func Watcher(ctxWatcher context.Context) {
 	lastLocker := time.Now()
-	lastUi := atomic.Value{}
+	lastUiUpdate := atomic.Value{}
 	isupdateUi := atomic.Bool{}
-	lastUi.Store(time.Now())
+	lastUiUpdate.Store(time.Now())
+
 	for {
 		select {
 		case <-ctxWatcher.Done():
@@ -49,11 +50,11 @@ func Watcher(ctxWatcher context.Context) {
 						if isupdateUi.Load() {
 							continue
 						}
-						if time.Since(lastUi.Load().(time.Time)) < 30*time.Second {
+						if time.Since(lastUiUpdate.Load().(time.Time)) < 30*time.Second {
 							continue
 						}
 						isupdateUi.Store(true)
-						go UpdateUI_Download(i, &isupdateUi, &lastUi)
+						go UpdateUI_Download(i, &isupdateUi, &lastUiUpdate)
 
 					default:
 						if _, err := os.Stat(AppLocker.UpdatePath); err == nil {
@@ -104,24 +105,43 @@ func Watcher(ctxWatcher context.Context) {
 							time.Sleep(time.Second)
 							os.Remove(AppUi.ExePath)
 							if os.Rename(AppUi.UpdatePath, AppUi.ExePath) == nil {
-								go func() {
-									if err := OpenApp(AppUi.UpdatePath, AppUi.ExePath, &AppUi.Ver); err != nil {
-										LogUnique(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
+								if err := OpenApp(AppUi.UpdatePath, AppUi.ExePath, &AppUi.Ver); err != nil {
+									LogUnique(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
+								}
+								last := time.Now()
+								AppUi.Last.Store(last)
+								for i := range 12 {
+									if last != AppUi.Last.Load().(time.Time) {
+										break
 									}
-									AppUi.Last.Store(time.Now())
-								}()
+									if i >= 10 {
+										AppUi.Ver.Store("1")
+										break
+									}
+									time.Sleep(200 * time.Millisecond)
+								}
 							}
 						} else {
 							last := AppUi.Last.Load().(time.Time)
-							if time.Since(last) > 2*time.Second {
+							if time.Since(last) > 3*time.Second {
 								taskkill("Ui.exe")
 								time.Sleep(500 * time.Millisecond)
-								go func() {
-									if err := OpenApp(AppUi.UpdatePath, AppUi.ExePath, &AppUi.Ver); err != nil {
-										LogUnique(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
+
+								if err := OpenApp(AppUi.UpdatePath, AppUi.ExePath, &AppUi.Ver); err != nil {
+									LogUnique(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
+								}
+								last = time.Now()
+								AppUi.Last.Store(last)
+								for i := range 12 {
+									if last != AppUi.Last.Load().(time.Time) {
+										break
 									}
-									AppUi.Last.Store(time.Now())
-								}()
+									if i >= 10 {
+										AppUi.Ver.Store("1")
+										break
+									}
+									time.Sleep(200 * time.Millisecond)
+								}
 
 							}
 						}

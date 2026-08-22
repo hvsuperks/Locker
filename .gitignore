@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Logs
+*.log
+
+# VSCode
+.vscode/
+
+# Go build
+*.exe
+
+# Windows
+Thumbs.db
+Desktop.ini

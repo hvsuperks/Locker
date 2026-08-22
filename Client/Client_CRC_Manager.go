@@ -146,7 +146,7 @@ func (a mClient) CRC_check(LockerChan chan struct{}, Restart_XOIS chan struct{},
 			return
 		case <-scan.C:
 			LockerChan <- struct{}{}
-			scan.Reset(time.Minute * 2)
+			scan.Reset(time.Minute * 5)
 
 		case <-LockerChan:
 			if !scan.Stop() {
@@ -163,42 +163,41 @@ func (a mClient) CRC_check(LockerChan chan struct{}, Restart_XOIS chan struct{},
 			STATUS.mu.RUnlock()
 			er_list, crc_status := a.CheckRegistry(RegMon)
 			if crc_status {
-				setStatus(keyCRC, config.Locker_state{Value: crc, Color: "OK"})
-				continue
-			} else {
-				if crc == isCRC {
-					sendData := map[string][]string{}
-					for _, er := range er_list {
-						sendData[er.RegPath] = append(sendData[er.RegPath+"_"+er.RegPath], er.RegKey)
-					}
-					STATUS.mu.RLock()
-					var payload = struct {
-						CRCid string              `json:"crcid"`
-						Data  map[string][]string `json:"data"`
-					}{
-						CRCid: fmt.Sprintf("%s_%s_%s", strings.Split(STATUS.Data.MasterMap.PGM.PGM, "_")[0], strings.Split(STATUS.Data.MasterMap.PGM.PGM, "_")[1], crc),
-						Data:  sendData,
-					}
-					STATUS.mu.RUnlock()
-					jsonData, _ := json.Marshal(payload)
-
-					URL := fmt.Sprintf("http://%s:%s/api/RemoveCRC",
-						config.IP.Load().(string),
-						config.MasterPort,
-					)
-					req, err := http.NewRequest(http.MethodPost, URL, bytes.NewBuffer(jsonData))
-					if err == nil {
-						req.Header.Set("Content-Type", "application/json")
-						resp, err := clientSend.Do(req)
-						if err == nil {
-							resp.Body.Close()
-						}
-					}
+				if crc == isCRC || isCRC == "None" {
 					setStatus(keyCRC, config.Locker_state{Value: crc, Color: "OK"})
 					continue
 				}
-				setStatus(keyCRC, config.Locker_state{Value: crc, Color: "Fail"})
 			}
+			if crc == isCRC {
+				sendData := map[string][]string{}
+				for _, er := range er_list {
+					sendData[er.RegPath] = append(sendData[er.RegPath+"_"+er.RegPath], er.RegKey)
+				}
+				STATUS.mu.RLock()
+				var payload = struct {
+					CRCid string              `json:"crcid"`
+					Data  map[string][]string `json:"data"`
+				}{
+					CRCid: fmt.Sprintf("%s_%s_%s", strings.Split(STATUS.Data.MasterMap.PGM.PGM, "_")[0], strings.Split(STATUS.Data.MasterMap.PGM.PGM, "_")[1], crc),
+					Data:  sendData,
+				}
+				STATUS.mu.RUnlock()
+				jsonData, _ := json.Marshal(payload)
+
+				URL := fmt.Sprintf("http://%s:%s/api/RemoveCRC",
+					config.IP.Load().(string),
+					config.MasterPort,
+				)
+				req, err := http.NewRequest(http.MethodPost, URL, bytes.NewBuffer(jsonData))
+				if err == nil {
+					req.Header.Set("Content-Type", "application/json")
+					resp, err := clientSend.Do(req)
+					if err == nil {
+						resp.Body.Close()
+					}
+				}
+			}
+			setStatus(keyCRC, config.Locker_state{Value: crc, Color: "Fail"})
 
 			if strings.EqualFold(crc_locker, "unlock") {
 				go func(er_list []config.RegFail) {
