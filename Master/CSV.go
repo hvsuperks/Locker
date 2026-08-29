@@ -2,6 +2,7 @@ package main
 
 import (
 	"Locker/config"
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -36,7 +37,7 @@ func RemoveEmptyDirs(root string) error {
 	})
 }
 
-func CSVMerge() {
+func CSVMerge(ctx context.Context) {
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
 	for {
@@ -47,7 +48,7 @@ func CSVMerge() {
 			modelList, err := os.ReadDir(config.CsvTMPPath)
 			if err != nil {
 				timer.Reset(time.Second)
-				Fmt(fmtMaster, "CSVMerge", "CSV Tmp No File")
+				LogInfo(&Logger.CSV, "CSVMerge", "CSV Tmp No File")
 				continue
 			}
 			for _, model := range modelList {
@@ -78,7 +79,7 @@ func CSVMerge() {
 						}
 
 						if len(strings.Split(path, "\\")) != 7 {
-							Fmt(fmtMaster, "CSVMerge", "Len Path != 7", path)
+							LogInfo(&Logger.CSV, "CSVMerge", "Len Path != 7", path)
 							return nil
 						}
 						WorkerList.mu.Lock()

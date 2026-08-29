@@ -53,7 +53,7 @@ func ListenMasterUDP(Log chan []any) {
 		if ip != IP {
 			config.IP.Store(ip)
 			httpDownload.Store(fmt.Sprintf("http://%s:%s/master/", ip, config.MasterPort))
-			httpUpload.Store(fmt.Sprintf("http://%s:%s/api/upload", ip, config.MasterPort))
+			httpUpload.Store(fmt.Sprintf("http://%s:%s/api/uploadFile", ip, config.MasterPort))
 		}
 		AutoUpdateChange <- msg.AutoUpdate
 

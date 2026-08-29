@@ -16,7 +16,8 @@ import (
 	"time"
 )
 
-func PGMZipUpload(w http.ResponseWriter, r *http.Request) {
+// get model,cd
+func Get_pgmUpload(w http.ResponseWriter, r *http.Request) {
 	model := r.URL.Query().Get("model")
 	cd := r.URL.Query().Get("cd")
 	modellist := map[string]struct{}{}
@@ -38,17 +39,12 @@ func PGMZipUpload(w http.ResponseWriter, r *http.Request) {
 		"cdlist":    cdlist,
 	})
 	if err != nil {
-		Fmt(fmtClient, "PGMZipUpload", err)
+		LogInfo(&Logger.API, "PGMZipUpload", err)
 	}
 }
 
-func API_PGMZipUpload(w http.ResponseWriter, r *http.Request) {
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
+// Post model, cd, version, pid, mode, file
+func POST_pgmUpload(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseMultipartForm(100 << 20) // 100MB
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -101,7 +97,7 @@ func API_PGMZipUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		dst.Close()
 
-		md5, err := script.GetMD5(savePath)
+		md5, err := GetMD5(savePath)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			dst.Close()
@@ -137,7 +133,7 @@ func API_PGMZipUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Con*ent-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,

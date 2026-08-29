@@ -24,59 +24,41 @@ var Logger LogWrap
 
 func InitLog(folder string, p *atomic.Pointer[log.Logger]) {
 	DayNow := time.Now().Day()
+	count := 1
+	var currentFile *os.File
 	go func() {
 		const maxSize = 5 * 1024 * 1024 // 5MB
 		os.MkdirAll(folder, os.ModePerm)
-		logPath := filepath.Join(folder, "app.log")
-		openLog := func() (*os.File, *log.Logger, error) {
-			f, err := os.OpenFile(
-				logPath,
-				os.O_CREATE|os.O_APPEND|os.O_WRONLY,
-				0666,
-			)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			l := log.New(
-				f,
-				"",
-				log.LstdFlags|log.Lshortfile,
-			)
-
-			return f, l, nil
-		}
-
-		currentFile, logger, err := openLog()
-		if err != nil {
-			return
-		}
-
-		p.Store(logger)
-
+		logpath := filepath.Join(folder, fmt.Sprintf("%s_%d.log", time.Now().Format("2006-01-02"), count))
 		for {
-			info, err := currentFile.Stat()
-			if err == nil && info.Size() >= maxSize || DayNow != time.Now().Day() {
-				DayNow = time.Now().Day()
-				currentFile.Close()
-
-				newName := filepath.Join(
-					folder,
-					fmt.Sprintf(
-						"app_%s.log",
-						time.Now().Format("20060102_150405"),
-					),
-				)
-
-				_ = os.Rename(logPath, newName)
-
-				f, l, err := openLog()
+			info, err := os.Stat(logpath)
+			if currentFile == nil || (err == nil && info.Size() >= maxSize) || DayNow != time.Now().Day() {
+				if DayNow != time.Now().Day() {
+					count = 1
+				}
+				for {
+					logpath = filepath.Join(folder,
+						fmt.Sprintf("%s_%d.log", time.Now().Format("2006-01-02"), count))
+					info, err := os.Stat(logpath)
+					if os.IsNotExist(err) {
+						break
+					}
+					if info.Size() < maxSize {
+						break
+					}
+					count++
+				}
+				f, l, err := openLog(logpath)
 				if err == nil {
+					old := currentFile
 					currentFile = f
 					p.Store(l)
+					if old != nil {
+						old.Close()
+					}
+					DayNow = time.Now().Day()
 				}
 			}
-
 			time.Sleep(time.Second * 10)
 		}
 	}()
@@ -91,7 +73,7 @@ func LogInfo(p *atomic.Pointer[log.Logger], v ...any) {
 		"[%s:%d] %s",
 		filepath.Base(file),
 		line,
-		fmt.Sprint(v...),
+		fmt.Sprintln(v...),
 	)
 	l := p.Load()
 	if l == nil {
@@ -100,6 +82,10 @@ func LogInfo(p *atomic.Pointer[log.Logger], v ...any) {
 	logMu.Lock()
 	defer logMu.Unlock()
 	logs := recentLogs[l]
+	if p == &Logger.manager {
+		l.Println(msg)
+		return
+	}
 	if slices.Contains(logs, msg) {
 		return
 	}
@@ -110,4 +96,23 @@ func LogInfo(p *atomic.Pointer[log.Logger], v ...any) {
 	recentLogs[l] = logs
 
 	l.Println(msg)
+}
+
+func openLog(logPath string) (*os.File, *log.Logger, error) {
+	f, err := os.OpenFile(
+		logPath,
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+		0666,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	l := log.New(
+		f,
+		"",
+		log.LstdFlags|log.Lshortfile,
+	)
+
+	return f, l, nil
 }

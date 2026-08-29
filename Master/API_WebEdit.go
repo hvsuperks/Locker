@@ -14,7 +14,7 @@ type Req struct {
 	Content string `json:"content"`
 }
 
-func WebeditPost(w http.ResponseWriter, r *http.Request) {
+func POST_editWebAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Fail", http.StatusMethodNotAllowed)
 		return
@@ -37,7 +37,7 @@ func WebeditPost(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func Webedit(w http.ResponseWriter, r *http.Request) {
+func GET_editWebAPI(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	webpath := filepath.Join(config.WebPathDir, "ApiWeb", name)
 	if !strings.HasSuffix(webpath, ".html") {
@@ -51,7 +51,7 @@ func Webedit(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func WebapiList(w http.ResponseWriter, r *http.Request) {
+func GET_listWebAPI(w http.ResponseWriter, r *http.Request) {
 	webpath := filepath.Join(config.WebPathDir, "ApiWeb", "*.html")
 	files, _ := filepath.Glob(webpath)
 

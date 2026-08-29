@@ -2,7 +2,6 @@ package main
 
 import (
 	"Locker/config"
-	"Locker/script"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -13,27 +12,23 @@ type apiActiveClientType struct {
 	Value string `json:"value"`
 }
 
-func apiActiveClient(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(405)
-		return
-	}
+func POST_clientActive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var d apiActiveClientType
 	err := json.NewDecoder(r.Body).Decode(&d)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
-		Fmt(fmtMaster, "apiActiveClient", err)
+		LogInfo(&Logger.API, "POST_clientActive", "Json Decoder", err)
 		return
 	}
 	if len(d.Value) != 6 {
 		http.Error(w, "Len Value !=6 ", 400)
-		Fmt(fmtMaster, "apiActiveClient", err)
+		LogInfo(&Logger.API, "POST_clientActive Value ko đúng 6 ký tự", d.Value)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(string("OK")))
-	tmp := script.RegRead(config.RegPath, "ActiveClient")
+	tmp := RegRead(config.RegPath, "ActiveClient")
 	newTmp := ""
 	if d.Mode == "ADD" {
 		newTmp = d.Value
@@ -55,7 +50,7 @@ func apiActiveClient(w http.ResponseWriter, r *http.Request) {
 			newMap[i] = struct{}{}
 		}
 	}
-	script.RegWrite(config.RegPath, "ActiveClient", newTmp)
+	RegWrite(config.RegPath, "ActiveClient", newTmp)
 	listActive.mu.Lock()
 	listActive.data = newMap
 	listActive.mu.Unlock()

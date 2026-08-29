@@ -22,7 +22,7 @@ var clientSend = &http.Client{
 }
 
 func ClientReport(payload clientPost) error {
-	URL := fmt.Sprintf("http://%s:%s/api/ClientReport",
+	URL := fmt.Sprintf("http://%s:%s/api/clientReport",
 		config.IP.Load().(string),
 		config.MasterPort,
 	)

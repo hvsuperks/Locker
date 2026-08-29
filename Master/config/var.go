@@ -60,12 +60,6 @@ var (
 	//SOFTWARE\Produc\lock
 	RegPath = `SOFTWARE\Produc\lock`
 
-	//SOFTWARE\Produc\lock\master
-	RegMasterPath = `SOFTWARE\Produc\lock\master`
-
-	//SOFTWARE\Produc\lock\master\CRCMap
-	RegCRCMasterPath = `SOFTWARE\Produc\lock\master\CRCMap`
-
 	//D:\Master\log\
 	LogPath_master = `D:\Master\log\`
 
@@ -99,5 +93,5 @@ var (
 		`7`: `Flag`,
 		`9`: `AOI`,
 	}
-	Ver = `9.0.3`
+	Ver = `9.3.0`
 )

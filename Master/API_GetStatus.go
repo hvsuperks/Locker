@@ -214,13 +214,15 @@ func GetMachineList() SvelteST {
 	}
 }
 
-func APIStatus(w http.ResponseWriter, r *http.Request) {
+func GET_clientStatus(w http.ResponseWriter, r *http.Request) {
+	LogInfo(&Logger.Debug, "GET_clientStatus")
+	i := GetMachineList()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(struct {
+	LogInfo(&Logger.Debug, json.NewEncoder(w).Encode(struct {
 		Type string   `json:"type"`
 		Data SvelteST `json:"data"`
 	}{
 		Type: "status",
-		Data: GetMachineList(),
-	})
+		Data: i,
+	}))
 }

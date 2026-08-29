@@ -14,17 +14,17 @@ import (
 	"time"
 )
 
-func HeaderEdit(w http.ResponseWriter, r *http.Request) {
+func GET_headerEdit(w http.ResponseWriter, r *http.Request) {
 	// truyền vào template (⚠ quan trọng: phải là string JSON)
 	WebHeaderEdit, _ := template.ParseFiles(filepath.Join(config.WebPathDir, "ApiWeb", "WebHeaderEdit.html"))
 	err := WebHeaderEdit.Execute(w, map[string]interface{}{})
 	if err != nil {
-		Fmt(fmtClient, "crcEditGet", err)
+		LogInfo(&Logger.API, "GET_headerEdit", "WebHeaderEdit Execute", err)
 		http.Error(w, "not found", 404)
 	}
 }
 
-func apiHeaderEdit(w http.ResponseWriter, r *http.Request) {
+func POST_headerEdit(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Model string `json:"model"`
 		CD    string `json:"cd"`
@@ -40,7 +40,7 @@ func apiHeaderEdit(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Fail"))
 		return
 	}
-	err = script.CopyFileFull(filepath.Join(config.HttpMasterDir, "header.json"), filepath.Join(config.BackupPGM, fmt.Sprintf("header_%s.json", time.Now().Format("20060102_150405"))))
+	err = CopyFileFull(filepath.Join(config.HttpMasterDir, "header.json"), filepath.Join(config.BackupPGM, fmt.Sprintf("header_%s.json", time.Now().Format("20060102_150405"))))
 	if err != nil {
 		w.Write([]byte(err.Error()))
 		return
@@ -91,7 +91,7 @@ func apiHeaderEdit(w http.ResponseWriter, r *http.Request) {
 
 	err = script.SaveJson(filepath.Join(config.HttpMasterDir, "header.json"), newMap)
 	if err == nil {
-		Fmt(fmtClient, "Header", "UPDATED:", req.Model, req.CD)
+		LogInfo(&Logger.API, "POST_headerEdit", "UPDATED:", req.Model, req.CD)
 		w.Write([]byte("ok"))
 	} else {
 		w.Write([]byte(err.Error()))

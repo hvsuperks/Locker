@@ -39,8 +39,7 @@ type STATUS_struct struct {
 	Locker_CRC    Locker_state      `json:"lockercrc"` // Lưu trạng thái Unlock / Lock CRC
 	Merge         Locker_state      `json:"merge"`     // Trạng thái ghép file
 	MesID         string            `json:"mesid"`
-
-	CurrentCRC string `json:"currentcrc"`
+	CurrentCRC    string            `json:"currentcrc"`
 }
 
 type RegFail struct {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -74,20 +75,33 @@ var Headers = &headStruct{
 }
 
 func loadconfig() { // 1. Load Model Config
+	cmd := exec.Command(
+		"net",
+		"use",
+		"Z:",
+		`\\10.1.1.31\고객불량 대책`,
+		"jahwa.ct$",
+		`/user:ct4`,
+		"/persistent:no",
+	)
+	out, err := cmd.CombinedOutput()
+	LogInfo(&Logger.MAIN, "net use failed:", err)
+	LogInfo(&Logger.MAIN, "output:", string(out))
+
 	if err := script.LoadMasterConfig("Model_config.json", &Client_list_config.Data, &Client_list_config.mu); err != nil {
-		Fmt(fmtMaster, "loadconfig", "Model_config.json", err)
+		LogInfo(&Logger.MAIN, "loadconfig", "Model_config.json", err)
 		os.Exit(0)
 	}
 
 	// 2. Load PGM Master List
 	if err := script.LoadMasterConfig("pgm_master_list.json", &pgm_master_list.Data, &pgm_master_list.mu); err != nil {
-		Fmt(fmtMaster, "loadconfig", "pgm_master_list.json", err)
+		LogInfo(&Logger.MAIN, "loadconfig", "pgm_master_list.json", err)
 		os.Exit(0)
 	}
 
 	// 3. Load CRC Master List
 	if err := script.LoadMasterConfig("crc_master_list.json", &crc_master_list.Data, &crc_master_list.mu); err != nil {
-		Fmt(fmtMaster, "loadconfig", "crc_master_list.json", err)
+		LogInfo(&Logger.MAIN, "loadconfig", "crc_master_list.json", err)
 		os.Exit(0)
 	}
 
@@ -99,7 +113,7 @@ func loadconfig() { // 1. Load Model Config
 	var header map[string]map[string][]string
 	er = json.Unmarshal(j.([]byte), &header)
 	if er != nil {
-		Fmt(fmtMaster, "loadconfig", er)
+		LogInfo(&Logger.MAIN, "loadconfig", er)
 		return
 	}
 	script.MergeHeaders(HeadersRaw, header)
@@ -152,7 +166,6 @@ func ClientWorkerFuncSet(id, Type, action string, data any) {
 		Data:   data,
 	}
 	ClientID.mu.Unlock()
-	Fmt(fmtClient, "ClientWorkerFuncSet", id, Type, action, u)
 }
 
 func MultiClientSend(ID, Type, Action string, Data any) {
@@ -170,22 +183,25 @@ func MultiClientSend(ID, Type, Action string, Data any) {
 	}
 }
 
-func Start(c context.Context, ver string, reloadChan chan struct{}, bind, color chan config.KV) {
-	//script.CopyFileFull(filepath.Join(config.AppRootDir, "Locker.exe"), filepath.Join(config.HttpDir, "setup_locker.exe"))
-	config.MasterLocker = script.RegRead(config.RegPath, "lockerVer")
-	config.MasterAOI = script.RegRead(config.RegPath, "aoiVer")
-	config.MasterUIAoi = script.RegRead(config.RegPath, "uiaoiVer")
-	config.MasterUILocker = script.RegRead(config.RegPath, "uilockerVer")
-	config.MasterService = script.RegRead(config.RegPath, "serviceVer")
-	var tmp = script.RegRead(config.RegPath, "ActiveClient")
+func Start(ctx context.Context, cancel context.CancelFunc, ver string) {
+	LogInfo(&Logger.Debug, "Start")
+	config.MasterLocker = RegRead(config.RegPath, "lockerVer")
+	config.MasterAOI = RegRead(config.RegPath, "aoiVer")
+	config.MasterUIAoi = RegRead(config.RegPath, "uiaoiVer")
+	config.MasterUILocker = RegRead(config.RegPath, "uilockerVer")
+	config.MasterService = RegRead(config.RegPath, "serviceVer")
+	var tmp = RegRead(config.RegPath, "ActiveClient")
+	LogInfo(&Logger.Debug, config.RegPath)
+	LogInfo(&Logger.Debug, tmp, len(tmp))
 	listActive.mu.Lock()
 	if len(tmp) > 0 {
 		for _, i := range strings.Split(tmp, "|") {
 			listActive.data[i] = struct{}{}
+
 		}
 	}
+	LogInfo(&Logger.Debug, listActive.data)
 	listActive.mu.Unlock()
-	go LanCard(bind, color)
 	Ver = ver
 	if _, err := os.Stat(config.HttpDir); os.IsNotExist(err) {
 		os.MkdirAll(config.HttpDir, 0755)
@@ -194,8 +210,10 @@ func Start(c context.Context, ver string, reloadChan chan struct{}, bind, color 
 	loadconfig()
 	go udpBroadcast()
 	for range 20 {
-		go syscCSV()
+		go syscCSV(ctx)
 	}
-	go CSVMerge()
-	apiManager()
+	go CSVMerge(ctx)
+	initGORM()
+	initAdmin()
+	apiManager(ctx, cancel)
 }

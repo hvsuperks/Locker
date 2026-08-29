@@ -2,7 +2,6 @@ package main
 
 import (
 	"Locker/config"
-	"Locker/script"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -19,17 +18,17 @@ func verChange(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&d)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
-		Fmt(fmtMaster, "verChange", err)
+		LogInfo(&Logger.API, "verChange", err)
 		return
 	}
-	Fmt(fmtMaster, d.Mode, d.Value)
+	LogInfo(&Logger.API, d.Mode, d.Value)
 	change := func(pl *string, key, value string) bool {
-		if script.RegWrite(config.RegPath, key, value) {
+		if RegWrite(config.RegPath, key, value) {
 			*pl = value
 			return true
 		} else {
 			http.Error(w, "RegWrite locker Fail", 444)
-			Fmt(fmtMaster, "verChange", "RegWrite locker Fail")
+			LogInfo(&Logger.API, "verChange", "RegWrite locker Fail")
 			return false
 		}
 	}
@@ -48,7 +47,7 @@ func verChange(w http.ResponseWriter, r *http.Request) {
 		i = change(&config.MasterService, "serviceVer", d.Value)
 	default:
 		http.Error(w, "RegWrite mode Fail"+d.Mode+" "+d.Value, 445)
-		Fmt(fmtMaster, "verChange", "RegWrite mode Fail"+d.Mode+" "+d.Value)
+		LogInfo(&Logger.API, "verChange", "RegWrite mode Fail"+d.Mode+" "+d.Value)
 		return
 	}
 
@@ -57,6 +56,6 @@ func verChange(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{
 			"status": "ok",
 		})
-		Fmt(fmtMaster, "verChange", d.Mode, d.Value)
+		LogInfo(&Logger.API, "verChange", d.Mode, d.Value)
 	}
 }

@@ -1,93 +1,116 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
-// Tạo Log File theo ngày
-func Create_logger(LogPath string, newFileMode *bool) {
-	day := 0
-	var ctxPrint context.Context
-	var cancelPrint context.CancelFunc
-	timer := time.NewTicker(time.Second)
-	defer timer.Stop()
+type LogWrap struct {
+	API   atomic.Pointer[log.Logger]
+	CSV   atomic.Pointer[log.Logger]
+	MAIN  atomic.Pointer[log.Logger]
+	AOI   atomic.Pointer[log.Logger]
+	Debug atomic.Pointer[log.Logger]
+}
+
+var Logger LogWrap
+
+func InitLog(folder string, p *atomic.Pointer[log.Logger]) {
+	if strings.Contains(strings.ToLower(folder), "debug") {
+		os.RemoveAll(folder)
+	}
+	DayNow := time.Now().Day()
+	count := 1
+	var currentFile *os.File
+	const maxSize = 2 * 1024 * 1024 // 5MB
+	os.MkdirAll(folder, os.ModePerm)
+	logpath := filepath.Join(folder, fmt.Sprintf("%s_%d.log", time.Now().Format("2006-01-02"), count))
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-			if time.Now().Day() != day {
-				day = time.Now().Day()
-				if cancelPrint != nil {
-					cancelPrint()
+		info, err := os.Stat(logpath)
+		if currentFile == nil || (err == nil && info.Size() >= maxSize) || DayNow != time.Now().Day() {
+			if DayNow != time.Now().Day() {
+				count = 1
+			}
+			for {
+				logpath = filepath.Join(folder,
+					fmt.Sprintf("%s_%d.log", time.Now().Format("2006-01-02"), count))
+				info, err := os.Stat(logpath)
+				if os.IsNotExist(err) {
+					break
 				}
-				ctxPrint, cancelPrint = context.WithCancel(ctx)
-				defer cancelPrint()
-				go println(ctxPrint, OpenDailyLog(LogPath, newFileMode))
+				if info.Size() < maxSize {
+					break
+				}
+				count++
+			}
+			f, l, err := openLog(logpath)
+			if err == nil {
+				old := currentFile
+				currentFile = f
+				p.Store(l)
+				if old != nil {
+					old.Close()
+				}
+				DayNow = time.Now().Day()
 			}
 		}
+		time.Sleep(time.Second * 10)
 	}
 }
 
-func println(ctxPrint context.Context, currentFile []*os.File) {
-	defer currentFile[0].Close()
-	defer currentFile[1].Close()
-	defer currentFile[2].Close()
-	Log_write_Client := log.New(currentFile[0], "", log.Ldate|log.Ltime)
-	Log_write_Aoi := log.New(currentFile[1], "", log.Ldate|log.Ltime)
-	Log_write_Master := log.New(currentFile[2], "", log.Ldate|log.Ltime)
+var logMu sync.Mutex
+var recentLogs = make(map[*log.Logger][]string)
 
-	for {
-		select {
-		case <-ctxPrint.Done():
-			return
-		case text := <-Log:
-			switch text.Type {
-			case fmtClient:
-				Log_write_Client.Println(text.Data...)
-			case fmtAOI:
-				Log_write_Aoi.Println(text.Data...)
-			case fmtMaster:
-				Log_write_Master.Println(text.Data...)
-			}
-
-		}
+func LogInfo(p *atomic.Pointer[log.Logger], v ...any) {
+	_, file, line, _ := runtime.Caller(1)
+	msg := fmt.Sprintf(
+		"[%s:%d] %s",
+		filepath.Base(file),
+		line,
+		fmt.Sprintln(v...),
+	)
+	l := p.Load()
+	if l == nil {
+		return
 	}
+	logMu.Lock()
+	defer logMu.Unlock()
+	logs := recentLogs[l]
+	if slices.Contains(logs, msg) {
+		return
+	}
+	logs = append(logs, msg)
+	if len(logs) > 50 {
+		logs = logs[1:]
+	}
+	recentLogs[l] = logs
+
+	l.Println(msg)
 }
 
-func OpenDailyLog(LOG_PATH string, newFileMode *bool) []*os.File {
-	today := time.Now().Format("2006-01-02")
-	filedir := filepath.Join(LOG_PATH, today)
-	if *newFileMode {
-		*newFileMode = false
-		os.Remove(filedir)
+func openLog(logPath string) (*os.File, *log.Logger, error) {
+	f, err := os.OpenFile(
+		logPath,
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+		0666,
+	)
+	if err != nil {
+		return nil, nil, err
 	}
-	os.MkdirAll(filedir, 0755)
-	var f []*os.File
-	var i = []string{"fmtClient.log", "fmtAOI.log", "fmtMaster.log"}
-	for _, n := range i {
-		filename := filepath.Join(filedir, n)
-		file, err := os.OpenFile(
-			filename,
-			os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_SYNC,
-			0644,
-		)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(2)
-		}
-		// 2. Kiểm tra nếu file mới tinh (size = 0), hãy ghi 3 byte BOM UTF-8
-		info, _ := file.Stat()
-		if info.Size() == 0 {
-			// 3 byte này (EF BB BF) giúp Windows hiểu đây là file Unicode UTF-8
-			file.Write([]byte{0xEF, 0xBB, 0xBF})
-		}
-		f = append(f, file)
-	}
-	return f
+
+	l := log.New(
+		f,
+		"",
+		log.LstdFlags|log.Lshortfile,
+	)
+
+	return f, l, nil
 }

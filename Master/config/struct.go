@@ -23,6 +23,7 @@ type RegMap_struct struct {
 	CRC    string                       `json:"crc"`
 	RegMap map[string]map[string]string `json:"regmap"`
 	Color  string                       `json:"color"`
+	MD5    string                       `json:"md5"`
 }
 
 type MasterMap_struct struct {

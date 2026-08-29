@@ -156,14 +156,14 @@ func ListenMasterUDP() {
 			if ip != IP.Load().(string) {
 				IP.Store(ip)
 				httpDownload = fmt.Sprintf("http://%s:%s/master", ip, MasterPort)
-				HttpGetCMD.Store(fmt.Sprintf("http://%s:%s/api/AutoUpdateGetCMD?id=", ip, MasterPort))
+				HttpGetCMD.Store(fmt.Sprintf("http://%s:%s/serviceGetCMD?id=", ip, MasterPort))
 			}
 
 			if msg.UiLocker != "" && msg.UiLocker != AppUi.Ver.Load().(string) {
 				AppUi.UpdateChan <- fmt.Sprintf("%s/_internal.zip|%s/Ui_%s.exe", httpDownload, httpDownload, msg.UiLocker)
 
 			}
-
+			LogUnique(msg.Locker, AppLocker.Ver.Load())
 			if msg.Locker != AppLocker.Ver.Load().(string) {
 				AppLocker.UpdateChan <- fmt.Sprintf("%s/locker_%s.exe", httpDownload, msg.Locker)
 			}

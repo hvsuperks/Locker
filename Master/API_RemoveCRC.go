@@ -24,7 +24,7 @@ var RemoveMap = &removeMap{
 	Data: map[string]*removeCRCID{},
 }
 
-func RemoveCRC(w http.ResponseWriter, r *http.Request) {
+func POST_crcRemove(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		CRCid string              `json:"crcid"`
 		Data  map[string][]string `json:"data"`
@@ -39,7 +39,7 @@ func RemoveCRC(w http.ResponseWriter, r *http.Request) {
 
 	RemoveMap.mu.Lock()
 	model, ok := RemoveMap.Data[req.CRCid]
-	Fmt(fmtClient, req.CRCid)
+	LogInfo(&Logger.API, req.CRCid)
 	if !ok {
 		model = &removeCRCID{
 			mu:   sync.RWMutex{},

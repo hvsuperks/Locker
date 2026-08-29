@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync/atomic"
@@ -14,6 +15,10 @@ import (
 )
 
 func setStatus(keys int, data any) {
+	_, file, line, ok := runtime.Caller(1)
+	if ok {
+		LogInfo(&Logger.manager, "setStatus called from ", file, line)
+	}
 	STATUS.mu.Lock()
 	defer STATUS.mu.Unlock()
 	switch keys {

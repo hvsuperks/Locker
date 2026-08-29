@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -93,7 +94,7 @@ func PingPong(ctx context.Context, cancel context.CancelFunc) {
 	}
 }
 
-// Api /api/GetPingPong
+// Api GetPingPong
 func GetControl(cancel context.CancelFunc) (*PingResponse, error) {
 	url := fmt.Sprintf("http://%s:%s/api/GetPingPong?ID=%s", config.IP.Load(), config.MasterPort, ID)
 
@@ -164,7 +165,7 @@ func Dispacht(cancel context.CancelFunc, ControlType string, msg Command) {
 		}
 
 	case "cmd":
-		Cmd(run, "cmd", "/c", msg.Action)
+		Cmd(start, "cmd", "/c", msg.Action)
 	}
 	if err != nil {
 		LogInfo(&Logger.connect, "ERROR: Control ", ControlType, msg.Action, err)
@@ -202,10 +203,12 @@ func SendStatusFunc(ctx context.Context) {
 
 		case <-SendStatus:
 			fmt.Println("Send Status")
-			STATUS.mu.RLock()
-			STATUS.Data.CurrentCRC = isCurrentCRC.Load().(string)
+			cur := isCurrentCRC.Load().(string)
+			cur = strings.TrimSpace(strings.ToUpper(cur))
+			STATUS.mu.Lock()
+			STATUS.Data.CurrentCRC = cur
 			data, _ := json.Marshal(*STATUS.Data)
-			STATUS.mu.RUnlock()
+			STATUS.mu.Unlock()
 			payload := &clientPost{
 				ID:   ID,
 				Type: "status",

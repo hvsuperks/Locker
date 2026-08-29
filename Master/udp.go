@@ -2,10 +2,8 @@ package main
 
 import (
 	"Locker/config"
-	"Locker/config/key"
 	"encoding/json"
 	"net"
-	"strings"
 	"time"
 )
 
@@ -21,10 +19,10 @@ func udpBroadcast() {
 	// 1. Lấy danh sách tất cả các card mạng
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		Fmt(fmtMaster, "udpBroadcast", "Không thể lấy danh sách card mạng:", err)
+		LogInfo(&Logger.MAIN, "udpBroadcast", "Không thể lấy danh sách card mạng:", err)
 		return
 	}
-
+	LogInfo(&Logger.MAIN, "udpBroadcast Start")
 	for {
 		msg.Locker = config.MasterLocker
 		msg.UiLocker = config.MasterUILocker
@@ -34,19 +32,30 @@ func udpBroadcast() {
 		msgsend, _ := json.Marshal(msg)
 		//msgLocker := "Master:" + config.MasterLocker
 		msgAOI := "Master:" + config.MasterAOI
+
 		for _, iface := range interfaces {
 			// Chỉ gửi qua các card đang chạy (Up) và không phải là Loopback (127.0.0.1)
 			if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 				continue
 			}
-
 			addrs, _ := iface.Addrs()
 			for _, addr := range addrs {
 				ipnet, ok := addr.(*net.IPNet)
-				if !ok || ipnet.IP.To4() == nil {
+				if !ok {
 					continue
 				}
-
+				ipv4 := ipnet.IP.To4()
+				if ipv4 == nil {
+					LogInfo(&Logger.MAIN,
+						iface.Name,
+						"No IPv4")
+					continue
+				}
+				LogInfo(&Logger.MAIN,
+					"IPv4:",
+					iface.Name,
+					ipv4.String(),
+				)
 				// 2. Tính toán địa chỉ Broadcast của card mạng này
 				// Ví dụ: IP 192.168.1.5/24 => Broadcast 192.168.1.255
 				broadcastIP := getBroadcastIP(ipnet)
@@ -89,6 +98,9 @@ func udpBroadcast() {
 				if config.MasterLocker != "" && config.MasterUILocker != "" && config.MasterService != "" {
 					sendUDP_module9(targetAddrLockerUi_module9, msgsend)
 					sendUDP_module9(targetAddrUpdate_module9, msgsend)
+					LogInfo(&Logger.MAIN, msgsend)
+				} else {
+					LogInfo(&Logger.MAIN, "config.MasterLocker: ", config.MasterLocker, " config.MasterUILocker: ", config.MasterUILocker, " config.MasterService: ", config.MasterService)
 				}
 			}
 
@@ -131,49 +143,4 @@ func getBroadcastIP(ipnet *net.IPNet) net.IP {
 		broadcast[i] = ip[i] | ^mask[i]
 	}
 	return broadcast
-}
-
-func LanCard(bind, color chan config.KV) {
-
-	timer := time.NewTicker(time.Minute)
-	defer timer.Stop()
-	for {
-		<-timer.C
-		var A, B string // A cho 172..., B cho 10...
-
-		addrs, err := net.InterfaceAddrs()
-		if err != nil {
-			return
-		}
-
-		for _, addr := range addrs {
-			// Ép kiểu về IPNet để lấy IP
-			ipNet, ok := addr.(*net.IPNet)
-			if !ok || ipNet.IP.IsLoopback() {
-				continue
-			}
-
-			ip := ipNet.IP.To4()
-			if ip == nil {
-				continue
-			}
-
-			ipStr := ip.String()
-
-			// Kiểm tra prefix để gán vào biến
-			if strings.HasPrefix(ipStr, "172.") {
-				A = ipStr
-			} else if strings.HasPrefix(ipStr, "10.") {
-				B = ipStr
-			}
-			bind <- config.KV{
-				Key:   key.PgmBind,
-				Value: A,
-			}
-			bind <- config.KV{
-				Key:   key.CrcBind,
-				Value: B,
-			}
-		}
-	}
 }

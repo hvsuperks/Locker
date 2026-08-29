@@ -90,8 +90,12 @@ import { onMount } from 'svelte';
   }
   async function loadStatus() {
     try {
-        const res = await fetch("/api/GetStatus");
-
+        const res = await fetch("/api/clientStatus");
+        console.log(res.status)
+        if (res.status === 401) {
+          window.location.href = "/login";
+          return;
+        }
         if (!res.ok) {
             throw new Error("API Error");
         }
@@ -217,7 +221,7 @@ import { onMount } from 'svelte';
 
   async function lockerChange(id, mode, state) {
       try {
-          const resp = await fetch("/api/LockerChange", {
+          const resp = await fetch("/api/lockerChange", {
               method: "POST",
               body: new URLSearchParams({
                   id,
@@ -238,7 +242,7 @@ import { onMount } from 'svelte';
 
   async function ModelConfigChange(id, mode, value) {
       try {
-          const resp = await fetch("/api/ModelConfigChange", {
+          const resp = await fetch("/api/modelConfig", {
               method: "POST",
               body: new URLSearchParams({
                   id,
@@ -297,7 +301,7 @@ import { onMount } from 'svelte';
 
   async function removeClient(id) {
       try {
-          const resp = await fetch("/api/removeClient", {
+          const resp = await fetch("/api/clientRemove", {
               method: "POST",
               body: new URLSearchParams({
                   id,
@@ -331,7 +335,7 @@ import { onMount } from 'svelte';
   
   async function activeClient(e,mode) {
         console.log(document.getElementById('activeClient').value)
-          const res = await fetch('/api/ActiveClient', {
+          const res = await fetch('/api/clientActive', {
               method: 'POST',
               headers: {
                   'Content-Type': 'application/json'
@@ -346,46 +350,10 @@ import { onMount } from 'svelte';
           console.log(data);
       }
 
-  async function removeApp(e,mode) {
-        console.log(document.getElementById('removeID').value)
-          const res = await fetch('/api/removeApp', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                  id: document.getElementById('removeID').value,
-              })
-          });
-
-          const data = await res.json();
-          console.log(data);
-      }
-
-      
-  
-  async function loginNat(e) {
-        console.log(document.getElementById('user').value)
-        console.log(document.getElementById('pass').value)
-          const res = await fetch('/api/NatLogin', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                  user: document.getElementById('user').value,
-                  pass: document.getElementById('pass').value
-              })
-          });
-
-          const data = await res.text();
-          console.log(data);
-      }
-  
   async function postVer(e) {
         console.log(document.getElementById('modeVer').value)
         console.log(document.getElementById('valueVer').value)
-          const res = await fetch('/api/ver', {
+          const res = await fetch('/api/verChange', {
               method: 'POST',
               headers: {
                   'Content-Type': 'application/json'
@@ -407,8 +375,18 @@ import { onMount } from 'svelte';
                 value === v ? "block" : "none";
         });
     }
-  const headerURL = `${window.location.origin}/HeaderEdit`
+  const headerURL = `${window.location.origin}/api/HeaderEdit`
+  const registerURL = `${window.location.origin}/login`
+  async function Logout() {
+    const res = await fetch("/logout", {
+        method: "POST",
+    });
 
+    if (res.ok) {
+      window.location.href = "/login";
+    }
+  };
+  
 </script>
 
 <!-- Svelte 5 dùng window listener kiểu mới hoặc giữ nguyên kiểu cũ đều được -->
@@ -418,15 +396,18 @@ import { onMount } from 'svelte';
     <div class="TopBox">
       <div class="TopDiv">
         <button type="button" onclick={() => window.open(headerURL, "_blank")}>Header Config</button>
+        <button type="button" onclick={() => Logout()}>Logout</button>
+        <button type="button" onclick={() => window.open(registerURL, "_blank")}>Register</button>
         Data : {countData}
         <!-- Nhập văn bản bình thường -->
-        const [actionControl, setAction] = useState("command");
+        let actionControl = "login";
+
         <select bind:value={actionControl}>
+            <option value="login">Login</option>
             <option value="command">Command</option>
             <option value="ver">Version</option>
             <option value="remove">Remove</option>
             <option value="active">Active</option>
-            <option value="login">Login</option>
         </select>
 
         {#if actionControl === "command"}
@@ -435,18 +416,11 @@ import { onMount } from 'svelte';
                   <input type="text" id="code" placeholder="code..." />
                   <button onclick={(e)=> commandSend(e)}>Send</button>
               </div>
-
           {:else if actionControl === "ver"}
               <div>
                   <input type="text" id="modeVer" placeholder="mode Ver" />
                   <input type="text" id="valueVer" placeholder="ver..." />
                   <button onclick={(e)=> postVer(e)}>Send</button>
-              </div>
-
-          {:else if actionControl === "remove"}
-              <div>
-                  <input type="text" id="removeID" placeholder="remove ID..." />
-                  <button onclick={(e)=> removeApp(e)}>Send</button>
               </div>
 
           {:else if actionControl === "active"}
@@ -455,17 +429,12 @@ import { onMount } from 'svelte';
                   <button onclick={(e)=> activeClient(e, "ADD")}>Add</button>
                   <button onclick={(e)=> activeClient(e, "Remove")}>Remove</button>
               </div>
-
-          {:else if actionControl === "login"}
-              <div>
-                  <input type="text" id="user" placeholder="User" />
-                  <input type="text" id="pass" placeholder="Pass" />
-                  <button onclick={(e)=> loginNat(e)}>Login</button>
-              </div>
           {/if}
           <span class="dot {natLoginState ? 'online' : 'offline'}"></span>
           Report : {rp}
+      <div style="color:black ;" id="result"></div>
       </div>
+
     </div>
     <div class="wrapper">
     {#each [...groups].sort((a, b) => a.model_name.localeCompare(b.model_name)) as model}
@@ -569,19 +538,19 @@ import { onMount } from 'svelte';
   {/each}
   {@const cdtmp = cd.indexOf(congdoanselect)}
   {@const mm = modelconfig[`${modelselect}${cdtmp}`]?.pgm?.split("_")[0]}
-  <button class="menu-item"  onclick={() => window.open(`${window.location.origin}/addPGMZipFile?model=${mm}&cd=${congdoanselect}`, '_blank')}> +Add</button>
+  <button class="menu-item"  onclick={() => window.open(`${window.location.origin}/api/pgmupload?model=${mm}&cd=${congdoanselect}`, '_blank')}> +Add</button>
   {:else if menuselect == "crc"}
     {@const crclist = Object.keys(regmap).filter(k=> k.includes(modelselect) && k.includes(congdoanselect))}   
     {#each crclist as m}
       <div class="menu-row">
         <button onclick={() => handleAction(menuselect,m.split("_")[2])}>{m}</button>
-        <button onclick={() => window.open(`${window.location.origin}/GetcrcEdit?name=${m}`, '_blank')}> Edit</button>
+        <button onclick={() => window.open(`${window.location.origin}/api/crcedit?name=${m}`, '_blank')}> Edit</button>
         <span class="info-text">{regmap[m]?.info?.info ||  regmap[m]?.info?.Info ||  regmap[m]?.info?.INFO || "Info None"}</span>
       </div>
     {/each}
       <div class="menu-row">
       <button 
-      <button onclick={() => window.open(`${window.location.origin}/GetcrcEdit?name=new`, '_blank')}> +Add</button>
+      <button onclick={() => window.open(`${window.location.origin}/api/crcedit?name=new`, '_blank')}> +Add</button>
       </div>
     {/if}
   </div>

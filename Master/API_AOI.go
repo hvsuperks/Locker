@@ -11,7 +11,7 @@ import (
 
 var aoiChan = make(chan struct{}, 25)
 
-func uploadAOIHandler(w http.ResponseWriter, r *http.Request) {
+func POST_uploadAOI(w http.ResponseWriter, r *http.Request) {
 	select {
 	case aoiChan <- struct{}{}:
 		defer func() { <-aoiChan }()
@@ -54,7 +54,7 @@ func aoiAction(w http.ResponseWriter, r *http.Request) {
 	err = os.MkdirAll(path, os.ModePerm)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		Fmt(fmtAOI, path, err)
+		LogInfo(&Logger.AOI, path, err)
 		return
 	}
 	paths := filepath.Join(path, handler.Filename)
@@ -75,7 +75,7 @@ func aoiAction(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
-	Fmt(fmtAOI, "aoiAction", "Upload thành công: ", paths)
+	LogInfo(&Logger.AOI, "aoiAction", "Upload thành công: ", paths)
 }
 
 func isValidFolder(name string) bool {

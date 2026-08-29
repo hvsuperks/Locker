@@ -7,66 +7,54 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
-func resetVNC(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Fail", http.StatusMethodNotAllowed)
-		return
-	}
+func POST_resetVNC(w http.ResponseWriter, r *http.Request) {
 	ID := r.FormValue("id")
-	go MultiClientSend(ID, "resetVNC", "resetVNC", nil)
+	if strings.ToLower(ID) == "master" {
+		w.WriteHeader(http.StatusOK)
+		Cmd(run, "taskkill", "/F", "/IM", "winvnc.exe")
+		time.Sleep(3 * time.Second)
+		Cmd(start, "C:\\Program Files\\uvnc bvba\\UltraVNC\\winvnc.exe", "-install")
+	} else {
+		go MultiClientSend(ID, "resetVNC", "resetVNC", nil)
+	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
-	Fmt(fmtClient, "Reset VNC", ID)
+	LogInfo(&Logger.API, "Reset VNC", ID)
 }
 
-func resetMES(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Fail", http.StatusMethodNotAllowed)
-		return
-	}
+func POST_resetMES(w http.ResponseWriter, r *http.Request) {
 	ID := r.FormValue("id")
 	go MultiClientSend(ID, "cmd", "taskkill|/IM|jahwa_ecm_agent_v2.exe|/F", nil)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
-	Fmt(fmtClient, "Reset MES", ID)
+	LogInfo(&Logger.API, "Reset MES", ID)
 }
 
-func apiCommand(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Fail", http.StatusMethodNotAllowed)
-		return
-	}
+func POST_apiCommand(w http.ResponseWriter, r *http.Request) {
 	ID := r.FormValue("id")
 	Action := r.FormValue("action")
 	if strings.ToLower(ID) == "master" {
-		script.Cmd("cmd", "/c", Action)
+		Cmd(start, "cmd", "/c", Action)
 	} else {
 		go MultiClientSend(ID, "cmd", Action, nil)
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
-	Fmt(fmtClient, "cmd", Action, ID)
+	LogInfo(&Logger.API, "cmd", Action, ID)
 }
 
-func removeClient(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Fail", http.StatusMethodNotAllowed)
-		return
-	}
+func POST_clientRemove(w http.ResponseWriter, r *http.Request) {
 	ID := r.FormValue("id")
 	go MultiClientSend(ID, "removeApp", "removeApp", nil)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
-	Fmt(fmtClient, "removeClient", ID)
+	LogInfo(&Logger.API, "removeClient", ID)
 }
 
-func LockerChange(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Fail", http.StatusMethodNotAllowed)
-		return
-	}
+func POST_LockerChange(w http.ResponseWriter, r *http.Request) {
 	ID := r.FormValue("id")
 	mode := r.FormValue("mode")
 	state := r.FormValue("state")
@@ -85,14 +73,10 @@ func LockerChange(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
-	Fmt(fmtClient, "LockerChange", ID, mode, state)
+	LogInfo(&Logger.API, "LockerChange", ID, mode, state)
 }
 
-func ModelConfigChange(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Fail", http.StatusMethodNotAllowed)
-		return
-	}
+func POST_modelConfig(w http.ResponseWriter, r *http.Request) {
 	ID := r.FormValue("id")
 	mode := r.FormValue("mode")
 	value := r.FormValue("value")
@@ -126,5 +110,5 @@ func ModelConfigChange(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
-	Fmt(fmtClient, "ModelConfigChange", ID, mode, value)
+	LogInfo(&Logger.API, "ModelConfigChange", ID, mode, value)
 }

@@ -246,7 +246,7 @@ func (m *UUIDManager) CheckAndLoadUUID(lotID string, filePath string, uuidColInd
 			continue
 		}
 
-		if len(record) > uuidColIndex {
+		if len(record) > 12 {
 			if len(record[13]) > 1 && len(record[7]) > 3 {
 				uuid := record[uuidColIndex]
 				m.cache[lotID][uuid] = struct{}{}

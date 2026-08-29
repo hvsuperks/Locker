@@ -2,6 +2,7 @@ package main
 
 import (
 	"Locker/config"
+	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -103,7 +104,7 @@ var WorkerList = WorkerListType{
 
 var csvWorkerChan = make(chan string, 50)
 
-func syscCSV() {
+func syscCSV(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -143,14 +144,14 @@ func syscCSV() {
 			if err == nil {
 				err = os.Remove(srcPath)
 				if err != nil {
-					Fmt(fmtMaster, "syscCSV", "Remove Fail", srcPath)
+					LogInfo(&Logger.CSV, "syscCSV", "Remove Fail", srcPath)
 					WorkerList.mu.Lock()
 					delete(WorkerList.Data, srcPath)
 					WorkerList.mu.Unlock()
 				}
 			} else {
 				if err.Error() != "Header - Read File Fail" {
-					Fmt(fmtMaster, "syscCSV", sourcename, err)
+					LogInfo(&Logger.CSV, "syscCSV", sourcename, err)
 				}
 				WorkerList.mu.Lock()
 				delete(WorkerList.Data, srcPath)

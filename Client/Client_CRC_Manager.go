@@ -158,15 +158,13 @@ func (a mClient) CRC_check(LockerChan chan struct{}, Restart_XOIS chan struct{},
 			scan.Reset(time.Minute * 2)
 			STATUS.mu.RLock()
 			crc_locker := STATUS.Data.Locker_CRC.Value
-			crc := STATUS.Data.MasterMap.CRC.CRC
-			isCRC := STATUS.Data.CurrentCRC
+			crc := strings.TrimSpace(strings.ToUpper(STATUS.Data.MasterMap.CRC.CRC))
+			isCRC := strings.TrimSpace(strings.ToUpper(isCurrentCRC.Load().(string)))
 			STATUS.mu.RUnlock()
 			er_list, crc_status := a.CheckRegistry(RegMon)
 			if crc_status {
-				if crc == isCRC || isCRC == "None" {
-					setStatus(keyCRC, config.Locker_state{Value: crc, Color: "OK"})
-					continue
-				}
+				setStatus(keyCRC, config.Locker_state{Value: crc, Color: "OK"})
+				continue
 			}
 			if crc == isCRC {
 				sendData := map[string][]string{}

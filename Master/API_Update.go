@@ -2,7 +2,6 @@ package main
 
 import (
 	"Locker/config"
-	"Locker/script"
 	"io"
 	"net/http"
 	"os"
@@ -10,7 +9,7 @@ import (
 	"strings"
 )
 
-func updateHandler(w http.ResponseWriter, r *http.Request) {
+func POST_updatePGM(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Giới hạn dung lượng file upload (ví dụ: 10MB)
 	r.ParseMultipartForm(500 << 20)
@@ -52,6 +51,6 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if isMaster {
-		script.LaunchAdminDetached(dstPath)
+		Cmd(start, dstPath)
 	}
 }
