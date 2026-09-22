@@ -60,10 +60,10 @@ func handlePGMchange(pgm config.FileMap_struct) error {
 	if err != nil {
 		return fmt.Errorf("Reg Write Error : %s %w", pgm.URL, err)
 	}
-	STATUS.mu.Lock()
+	LockMap(&STATUS.mu)
 	STATUS.Data.MasterMap.PGM = pgm
 	STATUS.Data.MasterMap.PGM.Color = "Fail"
-	STATUS.mu.Unlock()
+	UnlockMap(&STATUS.mu)
 	setStatus(keyPGM, pgm)
 	resetPackChan <- key.KeyPackPGM
 	return nil
@@ -82,10 +82,14 @@ func handleCRCchange(crc config.RegMap_struct) error {
 	if err != nil {
 		return fmt.Errorf("SaveMapToReg Error : %s %w", crc.CRC, err)
 	}
-	crc.Color = "Fail"
-	STATUS.mu.Lock()
+	crc.Color = "OK"
+	crc.MD5 = ""
+	if info, ok := crc.RegMap["info"]; ok {
+		crc.MD5 = info["md5"]
+	}
+	LockMap(&STATUS.mu)
 	STATUS.Data.MasterMap.CRC = crc
-	STATUS.mu.Unlock()
+	UnlockMap(&STATUS.mu)
 
 	resetPackChan <- key.KeyPackCRC
 	return nil

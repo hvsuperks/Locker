@@ -53,6 +53,7 @@ func main() {
 	InitLog(`D:\log\Locker\PGM`, &Logger.pgm)
 	InitLog(`D:\log\Locker\Merge`, &Logger.merge)
 	InitLog(`D:\log\Locker\Manager`, &Logger.manager)
+	InitLog(`D:\log\Locker\debug`, &Logger.debug)
 	go PipeConnect()
 	go StartPipeServer()
 	// Mở Port UDP

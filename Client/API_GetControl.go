@@ -69,7 +69,7 @@ func PingPong(ctx context.Context, cancel context.CancelFunc) {
 				p, err := GetControl(cancel)
 				if err != nil {
 					isDisconnect.Store(false)
-					fmt.Println("GetControl", err)
+					LogInfo(&Logger.debug, "GetControl", err)
 					return
 				}
 
@@ -84,7 +84,7 @@ func PingPong(ctx context.Context, cancel context.CancelFunc) {
 				}
 				if p.HasCommand {
 					for T, v := range p.Data {
-						fmt.Println("Type", T, v.Action)
+						LogInfo(&Logger.debug, "Type", T, v.Action)
 						go Dispacht(cancel, T, v)
 					}
 				}
@@ -205,10 +205,10 @@ func SendStatusFunc(ctx context.Context) {
 			fmt.Println("Send Status")
 			cur := isCurrentCRC.Load().(string)
 			cur = strings.TrimSpace(strings.ToUpper(cur))
-			STATUS.mu.Lock()
+			LockMap(&STATUS.mu)
 			STATUS.Data.CurrentCRC = cur
 			data, _ := json.Marshal(*STATUS.Data)
-			STATUS.mu.Unlock()
+			UnlockMap(&STATUS.mu)
 			payload := &clientPost{
 				ID:   ID,
 				Type: "status",

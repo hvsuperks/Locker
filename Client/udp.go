@@ -33,9 +33,12 @@ func ListenMasterUDP(Log chan []any) {
 	defer conn.Close()
 
 	buf := make([]byte, 4096)
+	LogInfo(&Logger.debug, `UDP Start`)
 	for {
 		n, remoteAddr, err := conn.ReadFromUDP(buf)
 		if err != nil {
+			LogInfo(&Logger.debug, `UDP Read Fail`, err)
+			time.Sleep(time.Second)
 			continue
 		}
 		var msg struct {
@@ -46,12 +49,15 @@ func ListenMasterUDP(Log chan []any) {
 			AutoUpdate string `json:"update"`
 		}
 		if err := json.Unmarshal(buf[:n], &msg); err != nil {
+			LogInfo(&Logger.debug, `UDP Unmarshal Fail`, err)
 			continue
 		}
 		ip := remoteAddr.IP.To4().String()
 		IP := config.IP.Load().(string)
+		LogInfo(&Logger.debug, `UDP IP :`, ip)
 		if ip != IP {
 			config.IP.Store(ip)
+			LogInfo(&Logger.debug, `UDP IP :`, ip)
 			httpDownload.Store(fmt.Sprintf("http://%s:%s/master/", ip, config.MasterPort))
 			httpUpload.Store(fmt.Sprintf("http://%s:%s/api/uploadFile", ip, config.MasterPort))
 		}

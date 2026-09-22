@@ -39,6 +39,7 @@ func Watcher(ctxWatcher context.Context) {
 						if time.Since(lastLocker) < 30*time.Second {
 							continue
 						}
+						LogUnique("Debug:", "Watcher.go:42", `AppLocker Update`, url)
 						if err := DownloadFile(url, AppLocker.UpdatePath); err == nil {
 							LogUnique(fmt.Sprintf("INFO: DownloadFile Update Locker %s", url))
 							lastLocker = time.Now()
@@ -58,6 +59,7 @@ func Watcher(ctxWatcher context.Context) {
 
 					default:
 						if _, err := os.Stat(AppLocker.UpdatePath); err == nil {
+							LogUnique("debug", `AppLocker.UpdatePath: `, AppLocker.UpdatePath, `stat`, err)
 							isShutdownLocker.Store(true)
 							running := true
 							for range 21 {
@@ -74,6 +76,7 @@ func Watcher(ctxWatcher context.Context) {
 							os.Remove(AppLocker.ExePath)
 							if os.Rename(AppLocker.UpdatePath, AppLocker.ExePath) == nil {
 								go func() {
+									AppLocker.Last.Store(time.Now())
 									if err := OpenApp(AppLocker.UpdatePath, AppLocker.ExePath, &AppLocker.Ver); err != nil {
 										LogUnique(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
 									}
@@ -81,8 +84,9 @@ func Watcher(ctxWatcher context.Context) {
 								}()
 							}
 						} else {
-							last := AppLocker.Last.Load().(time.Time)
+							last, _ := AppLocker.Last.Load().(time.Time)
 							if time.Since(last) > 3*time.Second {
+								LogUnique("debug", `watcher.go:87`, last)
 								taskkill("locker.exe")
 								for range 21 {
 									time.Sleep(100 * time.Millisecond)
@@ -91,6 +95,7 @@ func Watcher(ctxWatcher context.Context) {
 									}
 								}
 								go func() {
+									AppLocker.Last.Store(time.Now())
 									if err := OpenApp(AppLocker.UpdatePath, AppLocker.ExePath, &AppLocker.Ver); err != nil {
 										LogUnique(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
 									}
@@ -122,7 +127,7 @@ func Watcher(ctxWatcher context.Context) {
 								}
 							}
 						} else {
-							last := AppUi.Last.Load().(time.Time)
+							last, _ := AppUi.Last.Load().(time.Time)
 							if time.Since(last) > 3*time.Second {
 								taskkill("Ui.exe")
 								time.Sleep(500 * time.Millisecond)

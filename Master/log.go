@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,9 +25,6 @@ type LogWrap struct {
 var Logger LogWrap
 
 func InitLog(folder string, p *atomic.Pointer[log.Logger]) {
-	if strings.Contains(strings.ToLower(folder), "debug") {
-		os.RemoveAll(folder)
-	}
 	DayNow := time.Now().Day()
 	count := 1
 	var currentFile *os.File
@@ -60,6 +58,9 @@ func InitLog(folder string, p *atomic.Pointer[log.Logger]) {
 					old.Close()
 				}
 				DayNow = time.Now().Day()
+				if strings.Contains(strings.ToLower(folder), "debug") {
+					keepLastLogs(folder, 5)
+				}
 			}
 		}
 		time.Sleep(time.Second * 10)
@@ -113,4 +114,46 @@ func openLog(logPath string) (*os.File, *log.Logger, error) {
 	)
 
 	return f, l, nil
+}
+
+func keepLastLogs(folder string, maxFiles int) {
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		return
+	}
+
+	type fileInfo struct {
+		Name    string
+		ModTime time.Time
+	}
+
+	var files []fileInfo
+
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".log" {
+			continue
+		}
+
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+
+		files = append(files, fileInfo{
+			Name:    filepath.Join(folder, e.Name()),
+			ModTime: info.ModTime(),
+		})
+	}
+
+	if len(files) <= maxFiles {
+		return
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].ModTime.After(files[j].ModTime)
+	})
+
+	for _, f := range files[maxFiles:] {
+		os.Remove(f.Name)
+	}
 }

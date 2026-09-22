@@ -195,7 +195,7 @@ func writerFunc(writer *csv.Writer, msg config.CsvRow, lot string, header []stri
 func copyToUpload(dayFolder, lot, ID string) error {
 	src := filepath.Join(config.OutputRoot, dayFolder, lot+"_"+ID[len(ID)-3:]+".csv")
 	os.MkdirAll(config.UploadRoot, os.ModePerm)
-	dst := filepath.Join(config.UploadRoot, dayFolder, lot+"_"+ID[len(ID)-3:]+"_"+time.Now().Format("150405.00000")+".csv")
+	dst := filepath.Join(config.UploadRoot, dayFolder, lot+"_"+ID[len(ID)-3:]+"_"+time.Now().Format("20060102150405")+".csv")
 	return script.CopyFileFull(src, dst)
 }
 

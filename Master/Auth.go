@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -28,6 +31,9 @@ const (
 	perm_ModelChange  = "PGM Change"
 	perm_RemoveClient = "Client Remove"
 )
+
+var sessions = map[string]string{}
+var sessionsMu sync.RWMutex
 
 // Context key custom để tránh trùng lặp
 type contextKey string
@@ -121,6 +127,18 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		sessionID, err := r.Cookie(`session_id`)
+		if err != nil {
+			http.Error(w, "Phiên làm việc không hợp lệ!", http.StatusUnauthorized)
+			return
+		}
+		sessionsMu.RLock()
+		ID, ok := sessions[userCookie.Value]
+		sessionsMu.RUnlock()
+		if !ok || ID != sessionID.Value {
+			http.Error(w, "Phiên làm việc không hợp lệ!", http.StatusUnauthorized)
+			return
+		}
 		// Parse string thành số nguyên Timestamp
 		loginTimestamp, _ := strconv.ParseInt(timeCookie.Value, 10, 64)
 		loginTime := time.Unix(loginTimestamp, 0)
@@ -140,6 +158,14 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		ctx := context.WithValue(r.Context(), contextUsername, userCookie.Value)
 		ctx = context.WithValue(ctx, contextPermissions, user.Permissions)
+		newtime := fmt.Sprintf("%d", time.Now().Unix())
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "login_time",
+			Value:    newtime,
+			Path:     "/",
+			HttpOnly: true,
+		})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
@@ -177,7 +203,7 @@ func POST_login(w http.ResponseWriter, r *http.Request) {
 
 	// Tìm user trong Database
 	var user User
-	result := gormDB.Where("username = ?", req.Username).First(&user)
+	result := gormDB.Where("username = ?", strings.ToLower(req.Username)).First(&user)
 	if result.Error != nil {
 		http.Error(w, "Sai tên đăng nhập!", http.StatusUnauthorized)
 		return
@@ -191,20 +217,13 @@ func POST_login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Sai mật khẩu!", http.StatusUnauthorized)
 		return
 	}
+	ID := uuid.NewString()
 	// Đăng nhập thành công -> Set Cookie Session
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_user",
-		Value:    user.Username,
+		Value:    strings.ToLower(user.Username),
 		Path:     "/",
-		HttpOnly: true, // Bảo mật, chống JS độc hại lấy cookie
-	})
-
-	// Set luôn Cookie permissions để Frontend đọc như bạn thiết kế
-	http.SetCookie(w, &http.Cookie{
-		Name:     "permissions",
-		Value:    user.Permissions, // Mảng JSON string
-		Path:     "/",
-		HttpOnly: false, // Cho phép JS client đọc
+		HttpOnly: true, // Bảo mật, chống JS độc hại lấy cookie.
 	})
 	// Lưu thời gian đăng nhập hiện tại (Unix Timestamp)
 	loginTime := fmt.Sprintf("%d", time.Now().Unix())
@@ -215,6 +234,15 @@ func POST_login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_id",
+		Value:    ID,
+		Path:     "/",
+		HttpOnly: true,
+	})
+	sessionsMu.Lock()
+	sessions[strings.ToLower(user.Username)] = ID
+	sessionsMu.Unlock()
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -232,23 +260,26 @@ func POST_CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Kiểm tra xem Username đã tồn tại trong Database chưa
-	var existingUser User
-	err := gormDB.Where("username = ?", req.Username).First(&existingUser).Error
-	if err == nil {
+	var existingUser, parent User
+	err := gormDB.Where("username = ?", strings.ToLower(req.Username)).First(&existingUser).Error
+	if err == nil || strings.ToLower(req.Username) == `master` {
 		http.Error(w, "Tên đăng nhập đã tồn tại!", http.StatusConflict)
 		return
 	}
 
-	// 3. Convert mảng permissions []string thành JSON String
-	permsJSON, _ := json.Marshal(req.Permissions)
-	parent := r.Context().Value(contextUsername).(string)
+	parentName := r.Context().Value(contextUsername).(string)
+	err = gormDB.Where("username = ?", parentName).First(&parent).Error
+	if err == nil {
+		http.Error(w, "Account hiện tại không tồn tại", http.StatusConflict)
+		return
+	}
 	// 4. Tạo record mới trong DB
 	pa, _ := hashPassword(req.Password)
 	newUser := User{
-		Username:    req.Username,
+		Username:    strings.ToLower(req.Username),
 		Password:    pa, // Lưu ý: Nếu làm thực tế nên Hash password (bcrypt)
-		CreateBy:    parent,
-		Permissions: string(permsJSON),
+		CreateBy:    parentName + "|" + parent.CreateBy,
+		Permissions: "",
 	}
 
 	if err := gormDB.Create(&newUser).Error; err != nil {
@@ -259,8 +290,18 @@ func POST_CreateUser(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, map[string]any{
 		"message":     "Tạo tài khoản thành công",
 		"username":    req.Username,
-		"permissions": req.Permissions,
+		"permissions": "",
 	})
+}
+
+func GET_CreateUser(w http.ResponseWriter, r *http.Request) {
+	file := filepath.Join(config.WebPathDir, "ApiWeb", "Register.html")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		http.Error(w, file+" fail", http.StatusNotFound)
+		return
+	}
+	w.Write(data)
 }
 
 func GET_login(w http.ResponseWriter, r *http.Request) {
@@ -280,14 +321,6 @@ func POST_logout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 	})
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "permissions",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: false,
-	})
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
@@ -306,15 +339,31 @@ func GET_permissions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userName := r.Context().Value(contextUsername).(string)
+	currentPerm := r.Context().Value(contextPermissions).(string)
 	j := make(map[string][]string)
+
 	for _, datas := range users {
-		if strings.Contains(datas.Username, userName) {
+		listParent := strings.Split(datas.CreateBy, "|")
+		if slices.Contains(listParent, userName) {
 			var perms []string
 			json.Unmarshal([]byte(datas.Permissions), &perms) // Unmarshal JSON String thành []string
 			j[datas.Username] = perms
 		}
 	}
+	var perms []string
+	json.Unmarshal([]byte(currentPerm), &perms)
+	j[`master`] = perms
 	respondJSON(w, http.StatusOK, j)
+}
+
+func GET_webPermission(w http.ResponseWriter, r *http.Request) {
+	file := filepath.Join(config.WebPathDir, "ApiWeb", `webPermission.html`)
+	data, err := os.ReadFile(file)
+	if err != nil {
+		http.Error(w, file+" fail", http.StatusNotFound)
+		return
+	}
+	w.Write(data)
 }
 
 type UpdatePermissionsReq struct {

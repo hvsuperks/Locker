@@ -70,12 +70,12 @@ func (a mClient) pgmManager(pgmRuning *atomic.Bool, LockerChan, Restart_XOIS cha
 	}
 	isMd5, err := script.GetMD5(masterZip)
 	if err != nil || md5 != isMd5 {
-		STATUS.mu.Lock()
+		LockMap(&STATUS.mu)
 		m := STATUS.Data.MasterMap.PGM
 		m.MD5 = isMd5
 		m.Color = "Fail"
 		STATUS.Data.MasterMap.PGM = m
-		STATUS.mu.Unlock()
+		UnlockMap(&STATUS.mu)
 		setStatus(keyPGM, config.FileMap_struct{PGM: pgm, Color: "Fail"})
 		isdownload.Store(true)
 		err := script.DownloadFile(url, masterZip)
@@ -86,12 +86,12 @@ func (a mClient) pgmManager(pgmRuning *atomic.Bool, LockerChan, Restart_XOIS cha
 		}
 		return
 	}
-	STATUS.mu.Lock()
+	LockMap(&STATUS.mu)
 	m := STATUS.Data.MasterMap.PGM
 	m.MD5 = isMd5
 	m.Color = "Fail"
 	STATUS.Data.MasterMap.PGM = m
-	STATUS.mu.Unlock()
+	UnlockMap(&STATUS.mu)
 	if script.Unzip(masterZip, masterXOISdir) != nil {
 		setStatus(keyPGM, config.FileMap_struct{PGM: pgm, Color: "Fail"})
 		return

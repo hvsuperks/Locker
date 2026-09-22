@@ -166,14 +166,18 @@ func POST_clientReport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		crc_master_list.mu.RUnlock()
+		clientCRCMD5 := ""
+		if regmap, ok := data.MasterMap.CRC.RegMap["info"]; ok {
+			clientCRCMD5 = regmap["md5"]
+		}
 		if ok && master.CRC != "" && master.PGM != "" {
 
-			if data.MasterMap.CRC.CRC != master.CRC || (len(crcMd5) > 5 && data.MasterMap.CRC.MD5 != crcMd5) || (len(data.CurrentCRC) == 4 && strings.ToLower(data.CurrentCRC) != "none" && master.CRC != data.CurrentCRC && data.Locker_CRC.Value == "Locked") {
+			if data.MasterMap.CRC.CRC != master.CRC || (len(crcMd5) > 5 && clientCRCMD5 != crcMd5) || (len(data.CurrentCRC) == 4 && strings.ToLower(data.CurrentCRC) != "none" && master.CRC != data.CurrentCRC && data.Locker_CRC.Value == "Locked") {
 				id := ""
 				if len(j.ID) > 7 {
 					id = j.ID[:6]
 				}
-				LogInfo(&Logger.API, "POST_clientReport", fmt.Sprintf("ID: %s - data.MasterMap.CRC.CRC: %s - Master: %s - Client: %s", id, data.MasterMap.CRC.CRC, master.CRC, data.CurrentCRC))
+				LogInfo(&Logger.API, "POST_clientReport", fmt.Sprintf("ID: %s - data.MasterMap.CRC.CRC: %s - Master: %s - Client: %s - Client MD5: %s - Master MD5: %s", id, data.MasterMap.CRC.CRC, master.CRC, data.CurrentCRC, clientCRCMD5, crcMd5))
 				crc = "Fail"
 
 				ClientWorkerFuncSet(j.ID, "crc_change", master.CRC, config.RegMap_struct{CRC: master.CRC, RegMap: c})

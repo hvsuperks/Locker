@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"time"
@@ -45,6 +46,11 @@ func Get_pgmUpload(w http.ResponseWriter, r *http.Request) {
 
 // Post model, cd, version, pid, mode, file
 func POST_pgmUpload(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if err := recover(); err != nil {
+			LogInfo(&Logger.Debug, fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
+		}
+	}()
 	err := r.ParseMultipartForm(100 << 20) // 100MB
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

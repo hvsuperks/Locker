@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -20,7 +21,6 @@ var mutexReceiver sync.Mutex
 var lotCount = make(chan struct{}, 200)
 var listFile_Worker = make(map[string]bool)
 var mutexListFile sync.RWMutex
-var mutexClearCSVFolder = sync.RWMutex{}
 
 type csvIDStruct struct {
 	State  int
@@ -36,13 +36,12 @@ var mutexCsvStatus sync.RWMutex
 var csvStatus = make(map[string]*csvStatusStruct)
 
 func HandleCSV(w http.ResponseWriter, r *http.Request) {
-	mutexClearCSVFolder.RLock()
-	defer mutexClearCSVFolder.RUnlock()
 	lot := r.FormValue("lot")
 	model := r.FormValue("model")
 	cd := r.FormValue("congdoan")
 	date := r.FormValue("date")
 	ID := r.FormValue("id")
+	ver := r.FormValue("ver")
 	file, handler, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -50,19 +49,46 @@ func HandleCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	sourcename := handler.Filename
-	if len(lot) < 18 || len(model) < 5 || len(cd) < 2 || len(date) != 6 || len(ID) != 9 || len(sourcename) < 24 {
+	if len(lot) < 18 || len(model) < 5 || len(cd) < 2 || len(date) != 6 || len(sourcename) < 24 {
 		http.Error(w, "FormValue Fail", 500)
 		return
 	}
-	fullPath := filepath.Join(config.CsvTMPPath, model, cd, date, lot, ID+"_"+sourcename)
-	os.MkdirAll(filepath.Dir(fullPath), os.ModePerm)
-
+	dirpath := filepath.Join(config.BackupRawData, model, cd, date, lot)
+	fullPath := filepath.Join(dirpath, ID+"-"+sourcename)
+	os.MkdirAll(dirpath, os.ModePerm)
+	listFile, _ := os.ReadDir(dirpath)
+	oldpath := []string{}
+	for _, f := range listFile {
+		IDFile := strings.Split(ID+"-"+sourcename, "_")
+		if len(IDFile) < 2 {
+			continue
+		}
+		if strings.Contains(f.Name(), IDFile[0]) {
+			partName := strings.Split(strings.Split(f.Name(), ".")[0], "_")
+			if len(partName) != 3 {
+				http.Error(w, "File Name Fail", http.StatusBadRequest)
+				return
+			}
+			if partName[2] >= ver {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("ok"))
+				if len(oldpath) > 0 {
+					for _, i := range oldpath {
+						os.Remove(i)
+					}
+				}
+				return
+			} else {
+				oldpath = append(oldpath, filepath.Join(dirpath, f.Name()))
+			}
+		}
+	}
 	tmp, err := os.Create(fullPath + ".tmp")
 	if err != nil {
 		http.Error(w, "Create Fail: "+err.Error(), 500)
 		return
 	}
-
+	defer os.Remove(fullPath + ".tmp")
 	_, err = io.Copy(tmp, file)
 	tmp.Close()
 	if err != nil {
@@ -73,12 +99,15 @@ func HandleCSV(w http.ResponseWriter, r *http.Request) {
 	err = os.Rename(fullPath+".tmp", fullPath)
 	if err != nil {
 		http.Error(w, "Rename Fail: "+err.Error(), 500)
-		os.Remove(fullPath + ".tmp")
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
-
+	if len(oldpath) > 0 {
+		for _, i := range oldpath {
+			os.Remove(i)
+		}
+	}
 	go func(f string) {
 		WorkerList.mu.Lock()
 		_, ok := WorkerList.Data[f]
@@ -113,25 +142,8 @@ func syscCSV(ctx context.Context) {
 			rel := strings.TrimPrefix(srcPath, config.CsvTMPPath)
 			part := strings.Split(rel, "\\")
 			model, cd, date, lot, sourcename := part[0], part[1], part[02], part[3], part[4]
-
-			Headers.mu.RLock()
-			mdHeader, ok := Headers.model[model]
-			if !ok || mdHeader == nil {
-				Headers.mu.RUnlock()
-				continue
-			}
-			Headers.mu.RUnlock()
-
-			mdHeader.mu.RLock()
-			HeaderMaster := mdHeader.cd[cd]
-			mdHeader.mu.RUnlock()
-
-			if HeaderMaster == nil {
-				continue
-			}
-
 			dstPath := filepath.Join(
-				config.BackupMes,
+				config.BackupRawData,
 				model, cd,
 				"20"+date[:2], // Kết quả: 2026
 				date[2:4],     // Kết quả: 12 (Sửa từ 2:2 thành 2:4)
@@ -140,7 +152,7 @@ func syscCSV(ctx context.Context) {
 			)
 			os.MkdirAll(filepath.Dir(dstPath), os.ModePerm)
 
-			err := processCSV(srcPath, dstPath, lot, model, cd, date, sourcename, HeaderMaster)
+			err := processCSV(srcPath, dstPath, lot, model, cd, date, sourcename)
 			if err == nil {
 				err = os.Remove(srcPath)
 				if err != nil {
@@ -161,31 +173,30 @@ func syscCSV(ctx context.Context) {
 	}
 }
 
-func processCSV(srcPath, dstPath, lot, model, cd, date, sourcename string, HeaderMaster *headCD) error {
+func processCSV(UpdateFile, SourcFile, lot, model, cd, date, sourcename string) error {
+	defer func() {
+		if r := recover(); r != nil {
+			LogInfo(&Logger.Debug, fmt.Sprintf("panic: %v", r))
+		}
+	}()
 	actual, _ := Lot_chan.LoadOrStore(model+cd+lot, &sync.Mutex{})
 	mu := actual.(*sync.Mutex)
 	mu.Lock()
 	defer mu.Unlock()
-	file, err := os.Open(srcPath)
+	file, err := os.Open(UpdateFile)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	HeaderMaster.mu.RLock()
-	list := append([]string(nil), HeaderMaster.list...)
-	HeaderMaster.mu.RUnlock()
 
-	reader := csv.NewReader(file)
-	reader.FieldsPerRecord = -1
-	headNew, err := reader.Read()
+	readerUpdate := csv.NewReader(file)
+	readerUpdate.FieldsPerRecord = -1
+	headNew, err := readerUpdate.Read()
 	if err != nil {
-		return fmt.Errorf("Header - Read File Fail")
+		return err
 	}
 
-	_, err = os.Stat(dstPath)
-	isNewFile := os.IsNotExist(err)
-
-	f, err := os.OpenFile(dstPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(SourcFile, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
@@ -193,19 +204,26 @@ func processCSV(srcPath, dstPath, lot, model, cd, date, sourcename string, Heade
 
 	writer := csv.NewWriter(f)
 	defer writer.Flush()
-
+	readerSourc := csv.NewReader(f)
+	readerSourc.FieldsPerRecord = -1
 	// 1. Nếu là file mới, ghi dòng tiêu đề (Header) đầu tiên
-	if isNewFile {
-		if err := writer.Write(list); err != nil {
-			return err
-		}
+	csvData := [][]string{}
+	heads := []string{}
+	var headStatus bool
+	headCurrent, _ := readerSourc.Read()
+	heads, headStatus = checkHead(headCurrent, headNew)
+	if !headStatus {
+		csvData, _ = readerSourc.ReadAll()
 	}
-	manager.CheckAndLoadUUID(model, cd, lot, dstPath, 0)
-	rowTemp := make([]string, len(list))
+	if headStatus {
+		manager.CheckAndLoadUUID(model, cd, lot, SourcFile, 0)
+	} else {
+		manager.DeleteUUID(model, cd, lot)
+	}
+	rowTemp := make([]string, len(heads))
 	var row = map[string]string{}
 	for {
-
-		rows, err := reader.Read()
+		rows, err := readerUpdate.Read()
 		if err == io.EOF {
 			break
 		}
@@ -225,9 +243,15 @@ func processCSV(srcPath, dstPath, lot, model, cd, date, sourcename string, Heade
 		for i, h := range headNew {
 			if i < len(rows) {
 				row[h] = rows[i]
+			} else {
+				row[h] = "-"
 			}
 		}
-		row["source"] = sourcename[:24]
+		if len(sourcename) < 25 {
+			row["source"] = sourcename
+		} else {
+			row["source"] = sourcename[:24]
+		}
 		newUUID, ok := row["uuid"]
 		if !ok {
 			for k, v := range row {
@@ -237,11 +261,11 @@ func processCSV(srcPath, dstPath, lot, model, cd, date, sourcename string, Heade
 				}
 			}
 		}
-		if newUUID == "" || len(newUUID) < 10 || manager.IsDuplicate(model, cd, lot, newUUID) {
+		if newUUID == "" || len(newUUID) < 10 || (manager.IsDuplicate(model, cd, lot, newUUID) && ok) {
 			continue
 		}
 		rowTemp[0] = newUUID
-		for i, colName := range list {
+		for i, colName := range heads {
 			if colName == "uuid" {
 				continue
 			}
@@ -254,12 +278,34 @@ func processCSV(srcPath, dstPath, lot, model, cd, date, sourcename string, Heade
 			}
 			rowTemp[i] = value
 		}
-		err = writer.Write(rowTemp)
+		tmp := append([]string(nil), rowTemp...)
+		csvData = append(csvData, tmp)
+		manager.AddUUID(model, cd, lot, newUUID)
+	}
+	if !headStatus {
+		m := make(map[string][]string)
+		for _, row := range csvData {
+			id := row[0]
+			m[id] = row // gặp trùng sẽ ghi đè dòng cũ
+		}
+		f.Truncate(0)
+		f.Seek(0, 0)
+		writer = csv.NewWriter(f)
+		err = writer.Write(heads)
 		if err != nil {
 			return err
 		}
-		manager.AddUUID(model, cd, lot, newUUID)
+		for k := range m {
+			err = writer.Write(m[k])
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		f.Seek(0, io.SeekEnd)
+		writer.WriteAll(csvData)
 	}
+
 	return nil
 }
 
@@ -272,6 +318,7 @@ type UUIDStruct struct {
 	mu     sync.RWMutex // Không dùng con trỏ cho Mutex để tránh nil pointer
 	loaded bool         // Đánh dấu xem Lot này đã được nạp từ file chưa
 	uuid   map[uuid.UUID]struct{}
+	last   time.Time
 }
 
 type UUIDLot struct {
@@ -320,7 +367,7 @@ func (m *UUIDManager) getOrCreateLot(model, cd, lotID string) *UUIDStruct {
 	cdNode.mu.Lock()
 	lotNode, exists := cdNode.lot[lotID]
 	if !exists {
-		lotNode = &UUIDStruct{uuid: make(map[uuid.UUID]struct{})}
+		lotNode = &UUIDStruct{uuid: make(map[uuid.UUID]struct{}), last: time.Now()}
 		cdNode.lot[lotID] = lotNode
 	}
 	cdNode.mu.Unlock()
@@ -338,6 +385,7 @@ func (m *UUIDManager) CheckAndLoadUUID(model, cd, lotID string, filePath string,
 
 	// Nếu Lot đã được load từ file trước đó rồi thì thoát
 	if lotStruct.loaded {
+		lotStruct.last = time.Now()
 		return
 	}
 
@@ -384,6 +432,63 @@ func (m *UUIDManager) CheckAndLoadUUID(model, cd, lotID string, filePath string,
 	}
 }
 
+// CheckAndLoadUUID kiểm tra và nạp UUID từ file nếu cần thiết
+func (m *UUIDManager) CleanUUID() {
+	for {
+		time.Sleep(time.Minute * 30)
+		// 1. Khóa đọc cache chính
+		m.cache.mu.RLock()
+		// Tạo slice chứa pointer tới các modelNode để giảm thời gian giữ RLock cấp m.cache
+		models := make([]*UUIDCD, 0, len(m.cache.model))
+		for _, modelNode := range m.cache.model {
+			models = append(models, modelNode)
+		}
+		m.cache.mu.RUnlock()
+
+		// 2. Duyệt qua từng tầng để thu gom lot
+		for _, modelNode := range models {
+			modelNode.mu.RLock()
+			cdNodes := make([]*UUIDLot, 0, len(modelNode.cd))
+			for _, cdNode := range modelNode.cd {
+				cdNodes = append(cdNodes, cdNode)
+			}
+			modelNode.mu.RUnlock()
+
+			for _, cdNode := range cdNodes {
+				cdNode.mu.RLock()
+				lots := make([]*UUIDStruct, 0, len(cdNode.lot))
+				for _, lot := range cdNode.lot {
+					lots = append(lots, lot)
+				}
+				cdNode.mu.RUnlock()
+
+				// 3. Tiến hành cleanup
+				for _, lot := range lots {
+					lot.mu.Lock()
+					if time.Since(lot.last) > time.Hour {
+						lot.loaded = false
+						lot.uuid = nil // Giải phóng reference để GC thu hồi bộ nhớ ngay
+					}
+					lot.mu.Unlock()
+				}
+			}
+		}
+	}
+}
+
+// CheckAndLoadUUID kiểm tra và nạp UUID từ file nếu cần thiết
+func (m *UUIDManager) DeleteUUID(model, cd, lotID string) {
+	// 1. Tầng Model
+	lotStruct := m.getOrCreateLot(model, cd, lotID)
+
+	lotStruct.mu.Lock()
+	defer lotStruct.mu.Unlock()
+	if time.Since(lotStruct.last) > time.Hour {
+		lotStruct.uuid = nil
+		lotStruct.loaded = true
+	}
+}
+
 // IsDuplicate kiểm tra nhanh xem UUID đã tồn tại trong Lot đó chưa
 func (m *UUIDManager) IsDuplicate(model, cd, lotID string, uuidI string) bool {
 	// Sử dụng cơ chế RLock ở các tầng để đọc an toàn, tránh Data Race với hàm Add/Load
@@ -425,5 +530,32 @@ func (m *UUIDManager) AddUUID(model, cd, lotID string, uuidI string) {
 		lotStruct.uuid = make(map[uuid.UUID]struct{})
 	}
 	lotStruct.uuid[u] = struct{}{}
+	lotStruct.loaded = true
 	lotStruct.mu.Unlock()
+}
+
+func checkHead(src, dst []string) ([]string, bool) {
+	exist := make(map[string]bool)
+	ok := true
+	if len(src) < 2 {
+		src = []string{`uuid`, `source`}
+	} else {
+		for _, h := range src {
+			exist[h] = true
+		}
+	}
+	for _, h := range dst {
+		s := h
+		if strings.HasSuffix(h, "_90") {
+			s = h[:len(h)-3]
+		} else if strings.HasSuffix(h, "_180") || strings.HasSuffix(h, "_270") {
+			s = h[:len(h)-4]
+		}
+		if !exist[s] {
+			src = append(src, s)
+			ok = false
+			exist[s] = true
+		}
+	}
+	return src, ok
 }

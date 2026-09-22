@@ -5,13 +5,14 @@ import (
 )
 
 var (
-	MasterLocker   = ``
-	MasterAOI      = ``
-	MasterUILocker = ``
-	MasterUIAoi    = ``
-	MasterService  = ``
-	IP             atomic.Value
-	IsDog          atomic.Bool
+	MasterLocker     = atomic.Value{}
+	MasterAOI        = atomic.Value{}
+	MasterUILocker   = atomic.Value{}
+	MasterUIAoi      = atomic.Value{}
+	MasterService    = atomic.Value{}
+	MasterVbatoolVer = atomic.Value{}
+	IP               atomic.Value
+	IsDog            atomic.Bool
 	//Master.exe
 	DstAppName = `Master.exe`
 
@@ -76,7 +77,7 @@ var (
 	MasterPort = `50001`
 
 	//D:\Master\RawData
-	BackupMes = `D:\Master\RawData`
+	BackupRawData = `D:\Master\RawData`
 
 	//D:\CSV_tmp\
 	CsvTMPPath = `D:\CSV_tmp\`
@@ -93,5 +94,5 @@ var (
 		`7`: `Flag`,
 		`9`: `AOI`,
 	}
-	Ver = `9.3.0`
+	Ver = `9.4.1`
 )

@@ -4,11 +4,9 @@ import (
 	"Locker/config"
 	"Locker/script"
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -51,29 +49,6 @@ func GetVar() (map[string]config.P, map[string]map[string]string, map[string]map
 	return Client_list_config.Data, pgm_master_list.Data, crc_master_list.Data
 }
 
-var waitHeadNew sync.WaitGroup
-var mutextHeadNew sync.Mutex
-
-type headStruct struct {
-	mu    sync.RWMutex
-	model map[string]*headMolde
-}
-
-type headMolde struct {
-	mu sync.RWMutex
-	cd map[string]*headCD
-}
-
-type headCD struct {
-	mu   sync.RWMutex
-	list []string
-}
-
-var Headers = &headStruct{
-	mu:    sync.RWMutex{},
-	model: map[string]*headMolde{},
-}
-
 func loadconfig() { // 1. Load Model Config
 	cmd := exec.Command(
 		"net",
@@ -104,47 +79,6 @@ func loadconfig() { // 1. Load Model Config
 		LogInfo(&Logger.MAIN, "loadconfig", "crc_master_list.json", err)
 		os.Exit(0)
 	}
-
-	// load heart
-	j, er := script.LoadJson(filepath.Join(config.HttpMasterDir, "header.json"))
-	if er != nil {
-		script.SaveJson(filepath.Join(config.HttpMasterDir, "header.json"), HeadersRaw)
-	}
-	var header map[string]map[string][]string
-	er = json.Unmarshal(j.([]byte), &header)
-	if er != nil {
-		LogInfo(&Logger.MAIN, "loadconfig", er)
-		return
-	}
-	script.MergeHeaders(HeadersRaw, header)
-	setHeader(header)
-}
-
-func setHeader(header map[string]map[string][]string) {
-
-	Headers.mu.Lock()
-	for model, cds := range header {
-		if _, ok := Headers.model[model]; !ok {
-			Headers.model[model] = &headMolde{
-				mu: sync.RWMutex{},
-				cd: map[string]*headCD{},
-			}
-		}
-		Headers.model[model].mu.Lock()
-		for cd, list := range cds {
-			if _, ok := Headers.model[model].cd[cd]; !ok {
-				Headers.model[model].cd[cd] = &headCD{
-					mu:   sync.RWMutex{},
-					list: []string{},
-				}
-			}
-			Headers.model[model].cd[cd].mu.Lock()
-			Headers.model[model].cd[cd].list = list
-			Headers.model[model].cd[cd].mu.Unlock()
-		}
-		Headers.model[model].mu.Unlock()
-	}
-	Headers.mu.Unlock()
 }
 
 func ClientWorkerFuncSet(id, Type, action string, data any) {
@@ -185,11 +119,12 @@ func MultiClientSend(ID, Type, Action string, Data any) {
 
 func Start(ctx context.Context, cancel context.CancelFunc, ver string) {
 	LogInfo(&Logger.Debug, "Start")
-	config.MasterLocker = RegRead(config.RegPath, "lockerVer")
-	config.MasterAOI = RegRead(config.RegPath, "aoiVer")
-	config.MasterUIAoi = RegRead(config.RegPath, "uiaoiVer")
-	config.MasterUILocker = RegRead(config.RegPath, "uilockerVer")
-	config.MasterService = RegRead(config.RegPath, "serviceVer")
+	config.MasterLocker.Store(RegRead(config.RegPath, "lockerVer"))
+	config.MasterAOI.Store(RegRead(config.RegPath, "aoiVer"))
+	config.MasterUIAoi.Store(RegRead(config.RegPath, "uiaoiVer"))
+	config.MasterUILocker.Store(RegRead(config.RegPath, "uilockerVer"))
+	config.MasterService.Store(RegRead(config.RegPath, "serviceVer"))
+	config.MasterVbatoolVer.Store(RegRead(config.RegPath, "vbatoolVer"))
 	var tmp = RegRead(config.RegPath, "ActiveClient")
 	LogInfo(&Logger.Debug, config.RegPath)
 	LogInfo(&Logger.Debug, tmp, len(tmp))
@@ -209,10 +144,9 @@ func Start(ctx context.Context, cancel context.CancelFunc, ver string) {
 
 	loadconfig()
 	go udpBroadcast()
-	for range 20 {
-		go syscCSV(ctx)
-	}
-	go CSVMerge(ctx)
+	//go syscCSV(ctx)
+	//go CSVMerge(ctx)
+	go manager.CleanUUID()
 	initGORM()
 	initAdmin()
 	apiManager(ctx, cancel)

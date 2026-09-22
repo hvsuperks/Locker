@@ -36,16 +36,12 @@ func apiManager(ctx context.Context, cancal context.CancelFunc) {
 
 	// Upload PGM đặc tính
 	mux.HandleFunc("GET /api/pgmupload", Get_pgmUpload)
-	mux.HandleFunc("POST /api/pgmUpload", Protect(perm_PGMUpload, POST_pgmUpload))
+	mux.HandleFunc("POST /api/pgmupload", Protect(perm_PGMUpload, POST_pgmUpload))
 
 	// CRC Edit
 	mux.HandleFunc("GET /api/crcedit", GET_crcEdit)
 	mux.HandleFunc("POST /api/crcedit", Protect(perm_CRCEdit, POST_crcEdit))
 	mux.HandleFunc("POST /api/crcremove", POST_crcRemove)
-
-	// Header RowData Edit
-	mux.HandleFunc("GET /api/headeredit", GET_headerEdit)
-	mux.HandleFunc("POST /api/headeredit", Protect(perm_HeaderEdit, POST_headerEdit))
 
 	// Active vs Remove Client
 	mux.HandleFunc("POST /api/clientactive", Protect(perm_ClientActive, POST_clientActive))
@@ -66,7 +62,8 @@ func apiManager(ctx context.Context, cancal context.CancelFunc) {
 	mux.HandleFunc("/api/get-thead", getListRawDataVBA)
 	mux.HandleFunc("/api/get-chetaoMap", getListChetao)
 	mux.HandleFunc("/api/rawdatapost", HandleCSV)
-
+	mux.HandleFunc("GET /api/getrawdata", GET_VBArawdata)
+	mux.HandleFunc("GET /api/vbatool", GET_VBAtool)
 	// Version Change
 	mux.HandleFunc("POST /api/verchange", Protect(perm_VerChange, verChange))
 
@@ -81,6 +78,7 @@ func apiManager(ctx context.Context, cancal context.CancelFunc) {
 
 	// Api Control
 	mux.HandleFunc("POST /api/resetvnc", POST_resetVNC)
+	mux.HandleFunc("GET /api/resetvnc", GET_resetVNC)
 	mux.HandleFunc("POST /api/resetmes", POST_resetMES)
 	mux.HandleFunc("POST /api/lockerchange", Protect(perm_LockerChange, POST_LockerChange))
 	mux.HandleFunc("POST /api/modelconfig", Protect(perm_ModelChange, POST_modelConfig))
@@ -110,10 +108,15 @@ func apiManager(ctx context.Context, cancal context.CancelFunc) {
 	mux.HandleFunc("GET /api/me", AuthMiddleware(GET_meCheck))
 	mux.HandleFunc("GET /login", GET_login)
 	mux.HandleFunc("POST /login", POST_login)
+
+	mux.HandleFunc("GET /register", AuthMiddleware(GET_CreateUser))
 	mux.HandleFunc("POST /register", AuthMiddleware(POST_CreateUser))
+
 	mux.HandleFunc("POST /logout", POST_logout)
 	mux.HandleFunc("GET /api/permissions", AuthMiddleware(GET_permissions))
 	mux.HandleFunc("PUT /api/permissions", AuthMiddleware(PUT_permissions))
+	mux.HandleFunc("GET /webPermission", AuthMiddleware(GET_webPermission))
+
 	mux.HandleFunc("PUT /api/changepassword", AuthMiddleware(PUT_changePassword))
 	mux.HandleFunc("POST /api/resetpassword", AuthMiddleware(POST_reset_password))
 	mux.HandleFunc("POST /api/deleteuser", AuthMiddleware(POST_deleteUser))

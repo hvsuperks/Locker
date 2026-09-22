@@ -2,6 +2,7 @@ package main
 
 import (
 	"Locker/config"
+	"Locker/script"
 	"bytes"
 	"context"
 	"fmt"
@@ -26,6 +27,7 @@ func sendCSV(ctx context.Context) {
 	}()
 	isDone := false
 	for {
+		machine_cd := script.RegRead(`SOFTWARE\CubeX\MES_SET`, `machine_cd`)
 		time.Sleep(10 * time.Second)
 		if isDone {
 			return
@@ -46,12 +48,21 @@ func sendCSV(ctx context.Context) {
 				return nil // Tiếp tục duyệt
 			} else {
 				filename := d.Name()
-				lotFull := strings.Split(filename, "_")[0]
+				namesplit := strings.Split(strings.Split(filename, ".")[0], "_")
+				if len(namesplit) == 2 {
+					n := fmt.Sprintf("%s_%s_%s.csv", namesplit[0], namesplit[1][:3], time.Now().Format("20060102150405"))
+					os.Rename(path, filepath.Join(filepath.Dir(path), n))
+					return nil
+				} else if len(namesplit) != 3 {
+					return nil
+				}
+				lotFull := namesplit[0]
 				prefix := lotFull[:len(lotFull)-5]
 				date := prefix[len(prefix)-6:]
 				md := lotFull[:len(lotFull)-11]
 				cd := config.TypeMap[ID[6:7]]
 				suffix := lotFull[len(lotFull)-2:]
+				ver := namesplit[2]
 				lot := prefix + "_" + cd + "_" + suffix
 
 				if strings.EqualFold(model, "unknown") {
@@ -59,7 +70,7 @@ func sendCSV(ctx context.Context) {
 					strings.ReplaceAll(lot, "Unknown", model)
 					strings.ReplaceAll(lot, "unknown", model)
 				}
-				if uploadCSV(path, md, cd, lot, date) == nil {
+				if err := uploadCSV(path, md, cd, lot, date, machine_cd, ver); err == nil {
 					os.Remove(path)
 					LogInfo(&Logger.merge, "INFO:", "upload OK", path)
 				} else {
@@ -71,7 +82,7 @@ func sendCSV(ctx context.Context) {
 	}
 }
 
-func uploadCSV(path, md, congdoan, lot, date string) error {
+func uploadCSV(path, md, congdoan, lot, date, machine_cd, ver string) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -93,7 +104,8 @@ func uploadCSV(path, md, congdoan, lot, date string) error {
 	writer.WriteField("congdoan", congdoan)
 	writer.WriteField("lot", lot)
 	writer.WriteField("date", date)
-	writer.WriteField("id", ID)
+	writer.WriteField("id", machine_cd)
+	writer.WriteField("ver", ver)
 	writer.Close()
 	ip, _ := config.IP.Load().(string)
 	req, err := http.NewRequest("POST", "http://"+ip+":"+config.MasterPort+"/api/RawDataPost", body)

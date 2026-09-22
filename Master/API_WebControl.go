@@ -25,6 +25,14 @@ func POST_resetVNC(w http.ResponseWriter, r *http.Request) {
 	LogInfo(&Logger.API, "Reset VNC", ID)
 }
 
+func GET_resetVNC(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+	Cmd(run, "taskkill", "/F", "/IM", "winvnc.exe")
+	time.Sleep(3 * time.Second)
+	Cmd(start, "C:\\Program Files\\uvnc bvba\\UltraVNC\\winvnc.exe", "-install")
+}
+
 func POST_resetMES(w http.ResponseWriter, r *http.Request) {
 	ID := r.FormValue("id")
 	go MultiClientSend(ID, "cmd", "taskkill|/IM|jahwa_ecm_agent_v2.exe|/F", nil)

@@ -126,19 +126,21 @@ func dispacht(msg UiReciver, isVer *string) {
 	case "ver":
 		if isVer != &msg.Key {
 			*isVer = msg.Key
-			STATUS.mu.Lock()
+			LockMap(&STATUS.mu)
 			STATUS.Data.VerUiLocker = *isVer
-			STATUS.mu.Unlock()
+			UnlockMap(&STATUS.mu)
 		}
 	}
 }
 
 func PipeConnect() error {
 	timeout := 3 * time.Second
+	LogInfo(&Logger.debug, `Start`)
 	for {
 		conn, err := winio.DialPipe(`\\.\pipe\Service_locker`, &timeout)
 		if err != nil {
 			time.Sleep(100 * time.Millisecond)
+			LogInfo(&Logger.debug, err)
 			continue
 		}
 		AutoUpdateHandler(conn)
@@ -153,34 +155,35 @@ var ServiceConnectTime = atomic.Value{}
 func AutoUpdateHandler(conn net.Conn) {
 	defer conn.Close()
 	ServiceStatus.Store(true)
-
 	go func() {
 		i := []byte(Ver)
 		for {
-			conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
 			_, err := conn.Write(i)
 			if err != nil {
+				LogInfo(&Logger.debug, err)
 				conn.Close()
 				return
 			}
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 		}
 	}()
 	buf := make([]byte, 1024)
 	for {
-		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 		n, err := conn.Read(buf)
 		if err != nil {
+			LogInfo(&Logger.debug, err)
 			return
 		}
 		i := string(buf[:n])
+		LogInfo(&Logger.debug, i)
 		if i == "shutdown" {
+			LogInfo(&Logger.manager, "shutdown")
 			go cleanupAndExit()
 		} else if VerAutoUpdate.Load() != i {
 			VerAutoUpdate.Store(i)
-			STATUS.mu.Lock()
+			LockMap(&STATUS.mu)
 			STATUS.Data.VerAutoUpdate = i
-			STATUS.mu.Unlock()
+			UnlockMap(&STATUS.mu)
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync/atomic"
 )
 
 func verChange(w http.ResponseWriter, r *http.Request) {
@@ -22,9 +23,9 @@ func verChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	LogInfo(&Logger.API, d.Mode, d.Value)
-	change := func(pl *string, key, value string) bool {
+	change := func(pl *atomic.Value, key, value string) bool {
 		if RegWrite(config.RegPath, key, value) {
-			*pl = value
+			pl.Store(value)
 			return true
 		} else {
 			http.Error(w, "RegWrite locker Fail", 444)
@@ -45,6 +46,9 @@ func verChange(w http.ResponseWriter, r *http.Request) {
 		i = change(&config.MasterUIAoi, "uiaoiVer", d.Value)
 	case "autoupdate":
 		i = change(&config.MasterService, "serviceVer", d.Value)
+	case "vbatool":
+		i = change(&config.MasterVbatoolVer, "vbatoolVer", d.Value)
+
 	default:
 		http.Error(w, "RegWrite mode Fail"+d.Mode+" "+d.Value, 445)
 		LogInfo(&Logger.API, "verChange", "RegWrite mode Fail"+d.Mode+" "+d.Value)

@@ -25,10 +25,12 @@ func pipeStart(appname string, ver, last *atomic.Value) {
 				LogUnique("ERROR: Pipe", `\\.\pipe\`+appname, err)
 				return
 			}
+			LogUnique("pipe Start")
 			for {
 				conn, err := listener.Accept()
 				if err != nil {
-					continue
+					LogUnique("ERROR: Pipe", `\\.\pipe\`+appname, err)
+					return
 				}
 				go handleConn(conn, ver, last, appname)
 
@@ -87,27 +89,29 @@ func handleConn(conn net.Conn, ver, last *atomic.Value, appname string) {
 			}
 		}()
 		for {
-			conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
 			i := msg
-
 			if "Service_locker" == appname && isShutdownLocker.Load() {
 				i = []byte("shutdown")
 				isShutdownLocker.Store(false)
 			}
 			_, err := conn.Write(i)
 			if err != nil {
+				LogUnique(appname, `conn.write`, err)
 				return
 			}
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(time.Second)
 		}
 	}()
 	for {
-		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 		n, err := conn.Read(buf)
 		if err != nil {
+			LogUnique(appname, `conn.SetReadDeadline`, err)
 			return
 		}
 		ver.Store(string(buf[:n]))
 		last.Store(time.Now())
+		if appname == `Service_locker` {
+			LogUnique(string(buf[:n]), time.Now())
+		}
 	}
 }

@@ -39,7 +39,7 @@ var tmpZip = "C:\\Programdata\\Locker\\tmpLib"
 var thisVer = Ver
 
 func main() {
-	InitLog()
+	go InitLog()
 	if !ServiceRegister() {
 		return
 	}

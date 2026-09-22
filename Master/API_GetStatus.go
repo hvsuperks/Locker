@@ -205,11 +205,11 @@ func GetMachineList() SvelteST {
 		Ver:          Ver,
 		StartTime:    config.StartTime,
 		NatLogin:     natonline.Load(),
-		LockerVer:    config.MasterLocker,
-		UiLockerVer:  config.MasterUILocker,
-		AoiVer:       config.MasterAOI,
-		UiAoiVer:     config.MasterUIAoi,
-		ServiceVer:   config.MasterService,
+		LockerVer:    config.MasterLocker.Load().(string),
+		UiLockerVer:  config.MasterUILocker.Load().(string),
+		AoiVer:       config.MasterAOI.Load().(string),
+		UiAoiVer:     config.MasterUIAoi.Load().(string),
+		ServiceVer:   config.MasterService.Load().(string),
 		FileList:     tmpmap,
 	}
 }

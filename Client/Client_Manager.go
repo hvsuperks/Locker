@@ -19,8 +19,8 @@ func setStatus(keys int, data any) {
 	if ok {
 		LogInfo(&Logger.manager, "setStatus called from ", file, line)
 	}
-	STATUS.mu.Lock()
-	defer STATUS.mu.Unlock()
+	LockMap(&STATUS.mu)
+	defer UnlockMap(&STATUS.mu)
 	switch keys {
 
 	case keyLocker_PGM:
@@ -106,10 +106,15 @@ func Start(ctx context.Context, cancel context.CancelFunc) {
 	var c config.RegMap_struct
 	// CRC Load
 	if m, err := script.LoadDeepReg(config.RegCRCMasterPath); err == nil {
+		md5CRC := ""
+		if info, ok := m["info"]; ok {
+			md5CRC = info["md5"]
+		}
 		c = config.RegMap_struct{
 			CRC:    script.RegRead(config.RegMasterPath, "CRC"),
 			RegMap: m,
 			Color:  "Fail",
+			MD5:    md5CRC,
 		}
 
 	} else {
@@ -120,9 +125,9 @@ func Start(ctx context.Context, cancel context.CancelFunc) {
 			Color:  "Fail",
 		}
 	}
-	STATUS.mu.Lock()
+	LockMap(&STATUS.mu)
 	STATUS.Data.MasterMap.CRC = c
-	STATUS.mu.Unlock()
+	UnlockMap(&STATUS.mu)
 	// Locker Load
 
 	pgmLock := script.RegRead(config.RegPath, "lockerpgm")
