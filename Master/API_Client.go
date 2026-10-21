@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -54,8 +55,8 @@ func newUUID() string {
 }
 
 func Get_clientPingPong(w http.ResponseWriter, r *http.Request) {
-	ID := r.URL.Query().Get("ID")
-	if len(ID) != 9 {
+	IDs := r.URL.Query().Get("ID")
+	if len(IDs) < 9 {
 		http.Error(w, "ID Fail", http.StatusBadRequest)
 		return
 	}
@@ -63,7 +64,7 @@ func Get_clientPingPong(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	clients.mu.RLock()
-	client := clients.Client[ID]
+	client := clients.Client[IDs]
 	clients.mu.RUnlock()
 
 	// ✅ client chưa tồn tại → yêu cầu gửi info
@@ -74,11 +75,11 @@ func Get_clientPingPong(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ClientOnlineMap.mu.Lock()
-	last := ClientOnlineMap.Data[ID]
-	ClientOnlineMap.Data[ID] = time.Now()
+	last := ClientOnlineMap.Data[IDs]
+	ClientOnlineMap.Data[IDs] = time.Now()
 	ClientOnlineMap.mu.Unlock()
 	ClientWorkerFunc.mu.RLock()
-	Worker := ClientWorkerFunc.ID[ID]
+	Worker := ClientWorkerFunc.ID[IDs]
 	ClientWorkerFunc.mu.RUnlock()
 	if time.Since(last) > 5*time.Second {
 		json.NewEncoder(w).Encode(map[string]any{
@@ -105,6 +106,7 @@ func Get_clientPingPong(w http.ResponseWriter, r *http.Request) {
 }
 
 func POST_clientReport(w http.ResponseWriter, r *http.Request) {
+	defer RecoverLog()
 	var j clientPost
 	// ✅ decode JSON từ body
 	err := json.NewDecoder(r.Body).Decode(&j)
@@ -125,6 +127,12 @@ func POST_clientReport(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "ID Fail", http.StatusBadRequest)
 			return
 		}
+		modellistGorm.mu.RLock()
+		perm := slices.Contains(modellistGorm.perm, j.ID[:6])
+		modellistGorm.mu.RUnlock()
+		if !perm {
+			go SaveModelListSlice(j.ID[:6])
+		}
 		clients.mu.RLock()
 		client := clients.Client[j.ID]
 		clients.mu.RUnlock()
@@ -138,14 +146,14 @@ func POST_clientReport(w http.ResponseWriter, r *http.Request) {
 			clients.mu.Unlock()
 		}
 		Client_list_config.mu.RLock()
-		master, ok := Client_list_config.Data[j.ID[:7]]
+		master, ok1 := Client_list_config.Data[j.ID[:8]]
 		Client_list_config.mu.RUnlock()
-		if !ok {
+		/*if !ok {
 			LogInfo(&Logger.API, "POST_clientReport", j.ID[:6], " Client_list_config NoData")
 			break
-		}
+		}*/
 		listActive.mu.RLock()
-		_, ok = listActive.data[j.ID[:6]]
+		_, ok := listActive.data[j.ID[:6]]
 		listActive.mu.RUnlock()
 		if !ok {
 			LogInfo(&Logger.API, "POST_clientReport", j.ID[:6], " notActive")
@@ -153,8 +161,12 @@ func POST_clientReport(w http.ResponseWriter, r *http.Request) {
 		}
 		crc := data.MasterMap.CRC.Color
 		pgm := data.MasterMap.PGM.Color
-		m := strings.Split(master.PGM, "_")
-		f := fmt.Sprintf("%s_%s_%s", m[0], m[1], master.CRC)
+		f := ""
+		if ok1 {
+			m := strings.Split(master.PGM, "_")
+			f = fmt.Sprintf("%s_%s_", m[0], m[1])
+			f = f + master.CRC
+		}
 		crc_master_list.mu.RLock()
 		c, ok := crc_master_list.Data[f]
 		crcMd5 := ""
@@ -218,10 +230,11 @@ func POST_clientReport(w http.ResponseWriter, r *http.Request) {
 			MesID:         data.MesID,
 			CurrentCRC:    data.CurrentCRC,
 		}
-
+		LogInfo(&Logger.Debug, `client Lock`)
 		client.mu.Lock()
 		client.Status = &tmpClient
 		client.mu.Unlock()
+		LogInfo(&Logger.Debug, `client UnLock`)
 
 	default:
 		ClientWorkerFunc.mu.RLock()
@@ -229,6 +242,7 @@ func POST_clientReport(w http.ResponseWriter, r *http.Request) {
 		ClientWorkerFunc.mu.RUnlock()
 
 		if worker != nil {
+
 			worker.mu.Lock()
 			if worker.Type != nil {
 				command, ok := worker.Type[j.Type]

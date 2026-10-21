@@ -18,19 +18,12 @@ import (
 )
 
 func (a mClient) crcManager(crcRunning *atomic.Bool, LockerChan, Restart_XOIS chan struct{}) {
-	defer func() {
-		if err := recover(); err != nil {
-			LogInfo(&Logger.crc, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-			msgbox("CRC Manager Fail")
-			os.Exit(0)
-		}
-	}()
+	defer RecoverLog()
 	defer func() {
 		crcRunning.Store(false)
 	}()
 	crcRunning.Store(true)
-	STATUS.mu.RLock()
-	masterCRC := STATUS.Data.MasterMap.CRC
+	masterCRC := STATUS_GET(&STATUS.MasterMap.CRC).(RegMap_struct)
 	RegMap := make(map[string]map[string]string)
 	m := masterCRC.RegMap
 	crc := masterCRC.CRC
@@ -42,15 +35,15 @@ func (a mClient) crcManager(crcRunning *atomic.Bool, LockerChan, Restart_XOIS ch
 		}
 		RegMap[k] = newInnerMap
 	}
-	STATUS.mu.RUnlock()
 	crcLock := script.RegRead(config.RegPath, "lockercrc")
 	if strings.EqualFold(crcLock, "Locked") {
-		setStatus(keyLocker_CRC, config.Locker_state{Value: "Locked", Color: "OK"})
+		STATUS_PUT(&STATUS.Locker_CRC, Locker_state{Value: "Locked", Color: "OK"})
 	} else {
-		setStatus(keyLocker_CRC, config.Locker_state{Value: "Unlock", Color: "Fail"})
+		STATUS_PUT(&STATUS.Locker_CRC, Locker_state{Value: "Unlock", Color: "Fail"})
 	}
 	if crc == "" || crc == "Fail" || len(RegMap) < 2 {
-		setStatus(keyCRC, config.Locker_state{Value: "Fail", Color: "Fail"})
+		STATUS_PUT(&STATUS.MasterMap.CRC.CRC, "Fail")
+		STATUS_PUT(&STATUS.MasterMap.CRC.Color, "Fail")
 		return
 	}
 	for path := range RegMap {
@@ -72,22 +65,16 @@ func (a mClient) WatchLock_reg(LockerChan chan struct{}, path string) {
 			return
 		default:
 			func() {
-				defer func() {
-					if err := recover(); err != nil {
-						LogInfo(&Logger.crc, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-						msgbox("Watcher Lock Fail")
-						os.Exit(0)
-					}
-				}()
+				defer RecoverLog()
 				RegKey, err := registry.OpenKey(registry.CURRENT_USER, path, registry.NOTIFY)
 				if err != nil {
-					LogInfo(&Logger.crc, "ERROR:", "OpenKey "+path+err.Error())
+					LogInfo(&Logger.debug, "OpenKey "+path+err.Error())
 				}
 				defer RegKey.Close()
 				handle := windows.Handle(RegKey)
 				event, err := windows.CreateEvent(nil, 0, 0, nil)
 				if err != nil {
-					LogInfo(&Logger.crc, "ERROR:", "CreateEvent failed: "+err.Error())
+					LogInfo(&Logger.debug, "CreateEvent failed: "+err.Error())
 				}
 				defer windows.CloseHandle(event)
 				for {
@@ -103,31 +90,22 @@ func (a mClient) WatchLock_reg(LockerChan chan struct{}, path string) {
 							true, // async
 						)
 						if err != nil {
-							LogInfo(&Logger.crc, "ERROR:", "Notify setup failed: "+err.Error())
-							STATUS.mu.RLock()
-							crc := STATUS.Data.MasterMap.CRC.CRC
-							STATUS.mu.RUnlock()
-							setStatus(keyCRC, config.Locker_state{Value: crc, Color: "Fail"})
+							LogInfo(&Logger.debug, "Notify setup failed: "+err.Error())
+							STATUS_PUT(&STATUS.MasterMap.CRC.Color, "Fail")
 							return
 						}
 						status, err := windows.WaitForSingleObject(event, windows.INFINITE)
 						if err != nil {
-							LogInfo(&Logger.crc, "ERROR:", "Wait failed: "+err.Error())
-							STATUS.mu.RLock()
-							crc := STATUS.Data.MasterMap.CRC.CRC
-							STATUS.mu.RUnlock()
-							setStatus(keyCRC, config.Locker_state{Value: crc, Color: "Fail"})
+							LogInfo(&Logger.debug, "Wait failed: "+err.Error())
+							STATUS_PUT(&STATUS.MasterMap.CRC.Color, "Fail")
 							return
 						}
 						if status != windows.WAIT_OBJECT_0 {
-							LogInfo(&Logger.crc, "ERROR:", "Unexpected wait status")
-							STATUS.mu.RLock()
-							crc := STATUS.Data.MasterMap.CRC.CRC
-							STATUS.mu.RUnlock()
-							setStatus(keyCRC, config.Locker_state{Value: crc, Color: "Fail"})
+							LogInfo(&Logger.debug, "Unexpected wait status")
+							STATUS_PUT(&STATUS.MasterMap.CRC.Color, "Fail")
 							return
 						}
-						LogInfo(&Logger.crc, "ERROR:", "Registry changed:"+path)
+						LogInfo(&Logger.debug, "Registry changed:"+path)
 						LockerChan <- struct{}{}
 
 					}
@@ -156,14 +134,12 @@ func (a mClient) CRC_check(LockerChan chan struct{}, Restart_XOIS chan struct{},
 				}
 			}
 			scan.Reset(time.Minute * 2)
-			STATUS.mu.RLock()
-			crc_locker := STATUS.Data.Locker_CRC.Value
-			crc := strings.TrimSpace(strings.ToUpper(STATUS.Data.MasterMap.CRC.CRC))
+
+			crc := strings.TrimSpace(strings.ToUpper(STATUS_GET(&STATUS.MasterMap.CRC.CRC).(string)))
 			isCRC := strings.TrimSpace(strings.ToUpper(isCurrentCRC.Load().(string)))
-			STATUS.mu.RUnlock()
 			er_list, crc_status := a.CheckRegistry(RegMon)
 			if crc_status {
-				setStatus(keyCRC, config.Locker_state{Value: crc, Color: "OK"})
+				STATUS_PUT(&STATUS.MasterMap.CRC.Color, "OK")
 				continue
 			}
 			if crc == isCRC {
@@ -171,15 +147,14 @@ func (a mClient) CRC_check(LockerChan chan struct{}, Restart_XOIS chan struct{},
 				for _, er := range er_list {
 					sendData[er.RegPath] = append(sendData[er.RegPath+"_"+er.RegPath], er.RegKey)
 				}
-				STATUS.mu.RLock()
+				tmppgm := STATUS_GET(&STATUS.MasterMap.PGM.PGM).(string)
 				var payload = struct {
 					CRCid string              `json:"crcid"`
 					Data  map[string][]string `json:"data"`
 				}{
-					CRCid: fmt.Sprintf("%s_%s_%s", strings.Split(STATUS.Data.MasterMap.PGM.PGM, "_")[0], strings.Split(STATUS.Data.MasterMap.PGM.PGM, "_")[1], crc),
+					CRCid: fmt.Sprintf("%s_%s_%s", strings.Split(tmppgm, "_")[0], strings.Split(tmppgm, "_")[1], crc),
 					Data:  sendData,
 				}
-				STATUS.mu.RUnlock()
 				jsonData, _ := json.Marshal(payload)
 
 				URL := fmt.Sprintf("http://%s:%s/api/RemoveCRC",
@@ -195,13 +170,13 @@ func (a mClient) CRC_check(LockerChan chan struct{}, Restart_XOIS chan struct{},
 					}
 				}
 			}
-			setStatus(keyCRC, config.Locker_state{Value: crc, Color: "Fail"})
-
+			STATUS_PUT(&STATUS.MasterMap.CRC.Color, "Fail")
+			crc_locker := strings.ToLower(STATUS_GET(&STATUS.Locker_CRC.Value).(string))
 			if strings.EqualFold(crc_locker, "unlock") {
-				go func(er_list []config.RegFail) {
+				go func(er_list []RegFail) {
 					defer func() {
 						if err := recover(); err != nil {
-							LogInfo(&Logger.crc, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
+							LogInfo(&Logger.debug, fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
 							os.Exit(0)
 						}
 					}()
@@ -211,14 +186,14 @@ func (a mClient) CRC_check(LockerChan chan struct{}, Restart_XOIS chan struct{},
 					}
 					er_list = nil
 				}(er_list)
-				setStatus(keyLocker_CRC, config.Locker_state{Value: "Unlock", Color: "Fail"})
+				STATUS_PUT(&STATUS.Locker_CRC, Locker_state{Value: "Unlock", Color: "Fail"})
 				continue
 			} else {
-				setStatus(keyLocker_CRC, config.Locker_state{Value: "Locked", Color: "OK"})
+				STATUS_PUT(&STATUS.Locker_CRC, Locker_state{Value: "Locked", Color: "OK"})
 			}
 			resetXOISChan <- struct{}{}
 			time.Sleep(500 * time.Millisecond)
-			LogInfo(&Logger.crc, "ERROR:", er_list)
+			LogInfo(&Logger.crc, er_list)
 			a.UpdateCRC(er_list)
 			LockerChan <- struct{}{}
 
@@ -228,15 +203,17 @@ func (a mClient) CRC_check(LockerChan chan struct{}, Restart_XOIS chan struct{},
 
 var lastErrorList = ""
 
-func (a mClient) CheckRegistry(r map[string]map[string]string) ([]config.RegFail, bool) {
-	er := []config.RegFail{}
+func (a mClient) CheckRegistry(r map[string]map[string]string) ([]RegFail, bool) {
+	er := []RegFail{}
 	for path, kv := range r {
 		if strings.EqualFold(path, "info") {
 			continue
 		}
 		key, err := registry.OpenKey(registry.CURRENT_USER, path, registry.QUERY_VALUE)
 		if err != nil {
-			LogInfo(&Logger.crc, "ERROR:", "Không thể mở reg Path : "+path)
+			LogInfo(&Logger.debug, "Không thể mở reg Path : "+path)
+			script.DeleteTree(registry.CURRENT_USER, config.RegCRCMasterPath)
+			a.cancel()
 			return er, false
 		}
 		defer key.Close()
@@ -249,7 +226,7 @@ func (a mClient) CheckRegistry(r map[string]map[string]string) ([]config.RegFail
 				val = ""
 			}
 			if err != nil || !script.EqualValue(val, v) {
-				er = append(er, config.RegFail{
+				er = append(er, RegFail{
 					RegPath:     path,
 					RegKey:      k,
 					ValueMaster: v,
@@ -271,7 +248,7 @@ func (a mClient) CheckRegistry(r map[string]map[string]string) ([]config.RegFail
 	return er, true
 }
 
-func (a mClient) UpdateCRC(err_list []config.RegFail) {
+func (a mClient) UpdateCRC(err_list []RegFail) {
 
 	timer := time.NewTimer(time.Hour)
 	defer timer.Stop()
@@ -285,7 +262,7 @@ func (a mClient) UpdateCRC(err_list []config.RegFail) {
 		default:
 			if script.RegWrite(key.RegPath, key.RegKey, key.ValueMaster) != nil {
 				text := key.RegPath + "\\" + key.RegKey + " Set Fail : " + key.ValueOld + "→" + key.ValueMaster
-				LogInfo(&Logger.crc, "ERROR:", text)
+				LogInfo(&Logger.debug, text)
 				return
 			}
 			text := key.RegPath + "\\" + key.RegKey + " Set PASS : " + key.ValueOld + "→" + key.ValueMaster

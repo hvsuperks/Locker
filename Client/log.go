@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -162,5 +163,17 @@ func keepLastLogs(folder string, maxFiles int) {
 
 	for _, f := range files[maxFiles:] {
 		os.Remove(f.Name)
+	}
+}
+
+func RecoverLog() {
+	if r := recover(); r != nil {
+		i := fmt.Sprintf(
+			"[%s] PANIC: %v\n%s\n",
+			time.Now().Format("2006-01-02 15:04:05"),
+			r,
+			debug.Stack(),
+		)
+		LogInfo(&Logger.debug, i)
 	}
 }

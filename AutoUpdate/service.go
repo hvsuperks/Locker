@@ -36,7 +36,7 @@ func ServiceRegister() bool {
 	// 1. Lấy thông tin service
 	s, err := GetService(ServiceName, AutoUpdatePath)
 	if err != nil {
-		LogUnique("ERROR: Get service failed:", err)
+		Loginfo("ERROR: Get service failed:", err)
 		ShowErrorPopup("ERROR", "Get service failed: "+err.Error())
 		return false
 	}
@@ -56,7 +56,7 @@ func ServiceRegister() bool {
 	} else {
 		// Chưa cài -> Tiến hành Install
 		if err := s.Install(); err != nil {
-			LogUnique("ERROR: Service Install failed:", err)
+			Loginfo("ERROR: Service Install failed:", err)
 			ShowErrorPopup("ERROR", "Get service failed: "+err.Error())
 			return false
 		}
@@ -64,23 +64,23 @@ func ServiceRegister() bool {
 	// 3. Copy file thực thi mới đè vào System32
 	copyErr := CopyFileFull(src, AutoUpdatePath)
 	if copyErr != nil {
-		LogUnique("ERROR: Copy file failed:", copyErr)
+		Loginfo("ERROR: Copy file failed:", copyErr)
 		ShowErrorPopup("ERROR", "Copy File failed: "+copyErr.Error())
 		return false
 	}
 	// 4. Kích hoạt service chạy file từ dst
 	if err := s.Start(); err != nil {
-		LogUnique("ERROR: Service Start failed:", err)
+		Loginfo("ERROR: Service Start failed:", err)
 		ShowErrorPopup("ERROR", "Service Start failed: "+err.Error())
 		return false
 	}
 	// 5. THOÁT tiến trình tạm, nhường quyền cho tiến trình Service vừa start
-	LogUnique("INFO: Registered and started service successfully. Exiting setup process.")
+	Loginfo("INFO: Registered and started service successfully. Exiting setup process.")
 	ShowErrorPopup("INFO", "UpDate Pass")
 	// Cấu hình SCM tự restart sau 5 giây khi service bị crash/ngắt đột ngột
 	AddSystemPath(`C:\ProgramData\Locker`)
 	if err := Cmd(run, "sc", "failure", ServiceName, "reset=", "86400", "actions=", "restart/10000"); err != nil {
-		LogUnique("WARNING: Failed to set service failure actions:", err)
+		Loginfo("WARNING: Failed to set service failure actions:", err)
 	}
 	RemoveHP()
 	return false
@@ -116,7 +116,7 @@ func (p *program) run() {
 	HttpGetCMD.Store("")
 	mutex := checkSignApp()
 	_ = mutex
-	LogUnique(OpenUDP50000())
+	Loginfo(OpenUDP50000())
 	AppUi.Ver.Store(RegRead(regRoot, "verUi"))
 	AppLocker.Ver.Store(RegRead(regRoot, "verLocker"))
 	AppUi.Last.Store(time.Now())
@@ -180,6 +180,8 @@ func (p *program) run() {
 		}
 	}()
 	go ListenMasterUDP()
+	isHostPot.Store(time.Now())
+	go SendtoHostPost()
 }
 
 func (p *program) Stop(s service.Service) error {

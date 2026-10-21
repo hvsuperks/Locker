@@ -289,3 +289,16 @@ func IsRunning(exe string) bool {
 
 	return strings.Contains(strings.ToLower(string(out)), strings.ToLower(exe))
 }
+
+func DeleteOldFiles(dir string, days int) {
+	for {
+		expire := time.Now().AddDate(0, 0, -days)
+		LogInfo(&Logger.Debug, filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if info.ModTime().Before(expire) {
+				LogInfo(&Logger.Debug, "Remove", path, os.RemoveAll(path))
+			}
+			return nil
+		}))
+		time.Sleep(5 * time.Hour)
+	}
+}

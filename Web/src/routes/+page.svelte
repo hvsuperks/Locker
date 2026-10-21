@@ -1,23 +1,31 @@
 <script>
 import { onMount } from 'svelte';
-
   // --- DỮ LIỆU TRẠNG THÁI (Svelte 5 Runes) ---
   let groups = $state([]);
   let Status = $state({})
-  let cd = ["Marking", "AF", "OIS", "Tilt","Prism", "Fra_AF", "Fra_OIS", "Flag", "AOI"];
+  let cd = $state({
+    "Aging":`00`,
+    "AF":`10`, 
+    "OIS":`20`,
+    "Tilt":`30`,
+    "Tilt-Ro":`32`,
+    "Prism":`40`,
+    "Fra-AF":`50`,
+    "Fra-OIS":`60`, 
+    "Flag":`70`,
+  })
   let actionControl = $state("command");
   let modelMap = $state({
     10840: "MD10840",
     16849: "MD16849",
     15342: "MD15342",
     12338: "MD12338",
-    18049:"MD18049",
-    11542:"MD11542",
-    15984:"MD15984",
-    17997:"MD17997",
-    17748:"P17748"
+    18049: "MD18049",
+    11542: "MD11542",
+    15984: "MD15984",
+    17997: "MD17997",
+    17748: "P17748"
   })
-  let mays = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   let ListFile = $state(null)
   let modelconfig = $state(null);
   let md5map = $state(null);
@@ -178,7 +186,12 @@ import { onMount } from 'svelte';
     menuPos = { x: e.clientX, y: e.clientY };
     
   }
-
+  function showAlert(msg, isSuccess = false) {
+        const alertBox = document.getElementById('alertBox');
+        alertBox.innerText = msg;
+        alertBox.className = `alert ${isSuccess ? 'alert-success' : 'alert-error'}`;
+        alertBox.style.display = 'block';
+    }
   async function handleAction(type,action) {
     if (!confirm("Xác nhận thay đổi "+ type + ":" + action)) {
             return;
@@ -231,12 +244,12 @@ import { onMount } from 'svelte';
           });
           const msg = await resp.text();
           if (resp.ok) {
-              alert("Thành công: " + msg);
+              showAlert("Thành công: " + msg,true);
           } else {
-              alert("Lỗi: " + msg);
+              showAlert("Lỗi: " + msg,false);
           }
       } catch (err) {
-          alert("Kết nối thất bại: " + err);
+          showAlert("Kết nối thất bại: " + err,false);
       }
   }
 
@@ -252,12 +265,12 @@ import { onMount } from 'svelte';
           });
           const msg = await resp.text();
           if (resp.ok) {
-              alert("Thành công: " + msg);
+              showAlert("Thành công: " + msg,true);
           } else {
-              alert("Lỗi: " + msg);
+              showAlert("Lỗi: " + msg,false);
           }
       } catch (err) {
-          alert("Kết nối thất bại: " + err);
+          showAlert("Kết nối thất bại: " + err,false);
       }
   }
 
@@ -271,12 +284,12 @@ import { onMount } from 'svelte';
           });
           const msg = await resp.text();
           if (resp.ok) {
-              alert("Thành công: " + msg);
+              showAlert("Thành công: " + msg,true);
           } else {
-              alert("Lỗi: " + msg);
+              showAlert("Lỗi: " + msg,false);
           }
       } catch (err) {
-          alert("Kết nối thất bại: " + err);
+          showAlert("Kết nối thất bại: " + err,false);
       }
   }
 
@@ -290,12 +303,12 @@ import { onMount } from 'svelte';
           });
           const msg = await resp.text();
           if (resp.ok) {
-              alert("Thành công: " + msg);
+              showAlert("Thành công: " + msg,true);
           } else {
-              alert("Lỗi: " + msg);
+              showAlert("Lỗi: " + msg,false);
           }
       } catch (err) {
-          alert("Kết nối thất bại: " + err);
+          showAlert("Kết nối thất bại: " + err,false);
       }
   }
 
@@ -309,12 +322,12 @@ import { onMount } from 'svelte';
           });
           const msg = await resp.text();
           if (resp.ok) {
-              alert("Thành công: " + msg);
+              showAlert("Thành công: " + msg,true);
           } else {
-              alert("Lỗi: " + msg);
+              showAlert("Lỗi: " + msg,false);
           }
       } catch (err) {
-          alert("Kết nối thất bại: " + err);
+          showAlert("Kết nối thất bại: " + err,false);
       }
   }
 
@@ -375,8 +388,10 @@ import { onMount } from 'svelte';
                 value === v ? "block" : "none";
         });
     }
-  const headerURL = `${window.location.origin}/api/HeaderEdit`
-  const registerURL = `${window.location.origin}/login`
+  const headerURL = `${window.location.origin}/api/webedit`
+  const registerURL = `${window.location.origin}/register`
+  const permURL = `${window.location.origin}/webPermission`
+  const changepassURL = `${window.location.origin}/api/changepassword`
   async function Logout() {
     const res = await fetch("/logout", {
         method: "POST",
@@ -395,9 +410,11 @@ import { onMount } from 'svelte';
 <main >
     <div class="TopBox">
       <div class="TopDiv">
-        <button type="button" onclick={() => window.open(headerURL, "_blank")}>Header Config</button>
+        <button type="button" onclick={() => window.open(headerURL, "_blank")}>Web Api Edit</button>
         <button type="button" onclick={() => Logout()}>Logout</button>
         <button type="button" onclick={() => window.open(registerURL, "_blank")}>Register</button>
+        <button type="button" onclick={() => window.open(permURL, "_blank")}>Permission config</button>
+        <button type="button" onclick={() => window.open(changepassURL, "_blank")}>Change PassWord</button>
         Data : {countData}
         <!-- Nhập văn bản bình thường -->
         let actionControl = "login";
@@ -432,7 +449,7 @@ import { onMount } from 'svelte';
           {/if}
           <span class="dot {natLoginState ? 'online' : 'offline'}"></span>
           Report : {rp}
-      <div style="color:black ;" id="result"></div>
+          <div style="color:black ;" id="alertBox"></div>
       </div>
 
     </div>
@@ -443,7 +460,7 @@ import { onMount } from 'svelte';
     <div class="item">
       <section class="group-container">
         <div class="group-header">Line:{modelMap[model.model_name.slice(0,5)]}_Line {model.model_name.slice(5,6)}</div>
-        {#each cd as congdoan_name,i}
+        {#each Object.entries(cd) as [congdoan_name,i]}
           {@const congdoan = model.congdoan[congdoan_name]}
             {#if congdoan}
               <div class="item">
@@ -475,20 +492,17 @@ import { onMount } from 'svelte';
                     </thead>
                     <tbody class="taskbar">
                     
-                      {#each mays as may}
+                      {#each Object.entries(congdoan).sort(([a], [b]) => Number(a.split('_')[0]) - Number(b.split('_')[0]) ) as [may, m]}
                           <tr style="height: 30px;">
-                            <td><button class="invisible-button" type="button" onclick={copyID(`${model.model_name}${i}0${may}`)}>{model.model_name}{i}<br>0{may}</button></td>
-                            
-                            {#if congdoan[may]}
-                              {#if connect}                            
-                                {@const m = congdoan[may]}
+                            <td><button class="invisible-button" type="button" onclick={copyID(`${model.model_name}${i}${may.substring(0,1)}`)}>{model.model_name}<br>{i}{may.substring(0,1)}</button></td>
+                              {#if connect}                        
                                 {#if m.connect.color == "OK"}
-                                  <td><button class="invisible-button" aria-label="resetvnc" type="button" onclick={(e) => ResetVNC(e,`${model.model_name}${i}0${may}`)}>{m.mesid}</button></td>
-                                  <td><button class="invisible-button" aria-label="PGM locker" type="button" onclick={(e) => openMenu(e, model.model_name, congdoan_name,`${model.model_name}${i}0${may}`, "lockerpgm")}><span class="dot {m.lockerpgm.value === 'Locked' ? 'online' : 'offline'}"></span></button></td>
+                                  <td><button class="invisible-button" aria-label="resetvnc" type="button" onclick={(e) => ResetVNC(e,`${model.model_name}${i}${may}`)}>{m.mesid.substring(1)}</button></td>
+                                  <td><button class="invisible-button" aria-label="PGM locker" type="button" onclick={(e) => openMenu(e, model.model_name, congdoan_name,`${model.model_name}${i}${may}`, "lockerpgm")}><span class="dot {m.lockerpgm.value === 'Locked' ? 'online' : 'offline'}"></span></button></td>
                                   <th><span class="dot {m.pgm.color === 'OK' ? 'online' : 'offline'}"></span></th>
-                                  <td><button class="invisible-button" aria-label="CRC locker" type="button" onclick={(e) => openMenu(e, model.model_name, congdoan_name,`${model.model_name}${i}0${may}`, "lockercrc")}><span class="dot {m.lockercrc.value === 'Locked' ? 'online' : 'offline'}"></span></button></td>
+                                  <td><button class="invisible-button" aria-label="CRC locker" type="button" onclick={(e) => openMenu(e, model.model_name, congdoan_name,`${model.model_name}${i}${may}`, "lockercrc")}><span class="dot {m.lockercrc.value === 'Locked' ? 'online' : 'offline'}"></span></button></td>
                                   <th><span class="crc-text" style="color:{m.crc.color === 'OK' ? 'green' : 'red'}">{m.currentcrc}</span></th>
-                                  <td class = "status-{m.merge.color}"><button class="invisible-button" aria-label="resetmes" type="button" onclick={(e) => ResetMES(e,`${model.model_name}${i}0${may}`)}>{m.merge.color === 'OK' ? m.merge.value : 'Fail'}</button></td>
+                                  <td class = "status-{m.merge.color}"><button class="invisible-button" aria-label="resetmes" type="button" onclick={(e) => ResetMES(e,`${model.model_name}${i}${may}`)}>{m.merge.color === 'OK' ? m.merge.value : 'Fail'}</button></td>
                                   
                                   <th>
                                     SC: {m.ver.split('|')[0]}<br>
@@ -501,14 +515,15 @@ import { onMount } from 'svelte';
                               {:else}
                                 <td class="status-Fail">X</td><td class="status-Fail">X</td><td class="status-Fail">X</td><td class="status-Fail">X</td><td class="status-Fail">X</td><td class="status-Fail">X</td><td class="status-Fail">X</td>
                               {/if}
-                            {/if}
                           </tr>
                       {/each}
+                      <tr style="height: 30px;"></tr>
                     </tbody>
                   </table>
                   </div>
               </div>
             {/if}
+
         {/each}
     </section>
   </div></div>
@@ -536,7 +551,7 @@ import { onMount } from 'svelte';
   {:else}
     <div class="no-data">Không tìm thấy PGM nào cho {modelselect}</div>
   {/each}
-  {@const cdtmp = cd.indexOf(congdoanselect)}
+  {@const cdtmp = cd[congdoanselect]}
   {@const mm = modelconfig[`${modelselect}${cdtmp}`]?.pgm?.split("_")[0]}
   <button class="menu-item"  onclick={() => window.open(`${window.location.origin}/api/pgmupload?model=${mm}&cd=${congdoanselect}`, '_blank')}> +Add</button>
   {:else if menuselect == "crc"}
@@ -608,10 +623,10 @@ import { onMount } from 'svelte';
 
     .TopBox{
       padding: 20px;
-            color: white;
-            font-weight: bold;
-            text-align: center;
-            border-radius: 8px;
+      color: white;
+      font-weight: bold;
+      text-align: center;
+      border-radius: 8px;
     }
 
     .TopDiv{

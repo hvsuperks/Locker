@@ -49,10 +49,15 @@ var jwtKey = []byte("super_secret_jwt_key_change_me")
 
 type User struct {
 	Username    string `json:"username"`
-	Password    string `json:"Password"`
+	Password    string `json:"password"`
 	Role        string `json:"role"`
 	Permissions string `gorm:"type:text"` // Lưu mảng []string dưới dạng JSON String trong DB
 	CreateBy    string `json:"createby"`
+}
+
+type modellistGormStruct struct {
+	mu   sync.RWMutex
+	perm []string
 }
 
 type LoginRequest struct {
@@ -102,11 +107,9 @@ func initAdmin() {
 		CreateBy:    "",
 		Permissions: string(p),
 	}
-
-	if err := gormDB.Create(&newUser).Error; err != nil {
-		LogInfo(&Logger.Debug, "gormDB.Create", err)
-		os.Exit(1)
-	}
+	gormDB.Where(User{
+		Username: newUser.Username,
+	}).Assign(newUser).FirstOrCreate(&newUser)
 
 }
 
@@ -205,6 +208,7 @@ func POST_login(w http.ResponseWriter, r *http.Request) {
 	var user User
 	result := gormDB.Where("username = ?", strings.ToLower(req.Username)).First(&user)
 	if result.Error != nil {
+		LogInfo(&Logger.Debug, "user not found:", req.Username)
 		http.Error(w, "Sai tên đăng nhập!", http.StatusUnauthorized)
 		return
 	}
@@ -214,6 +218,7 @@ func POST_login(w http.ResponseWriter, r *http.Request) {
 		[]byte(req.Password),
 	)
 	if err != nil {
+		LogInfo(&Logger.Debug, "PassWord Fail:", req.Password)
 		http.Error(w, "Sai mật khẩu!", http.StatusUnauthorized)
 		return
 	}
@@ -269,12 +274,12 @@ func POST_CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	parentName := r.Context().Value(contextUsername).(string)
 	err = gormDB.Where("username = ?", parentName).First(&parent).Error
-	if err == nil {
-		http.Error(w, "Account hiện tại không tồn tại", http.StatusConflict)
+	if err != nil {
+		http.Error(w, parentName+": Account hiện tại không tồn tại", http.StatusConflict)
 		return
 	}
 	// 4. Tạo record mới trong DB
-	pa, _ := hashPassword(req.Password)
+	pa, _ := hashPassword(`123456`)
 	newUser := User{
 		Username:    strings.ToLower(req.Username),
 		Password:    pa, // Lưu ý: Nếu làm thực tế nên Hash password (bcrypt)
@@ -287,15 +292,22 @@ func POST_CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, map[string]any{
-		"message":     "Tạo tài khoản thành công",
-		"username":    req.Username,
-		"permissions": "",
-	})
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`Tạo tài khoản thành công`))
 }
 
 func GET_CreateUser(w http.ResponseWriter, r *http.Request) {
 	file := filepath.Join(config.WebPathDir, "ApiWeb", "Register.html")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		http.Error(w, file+" fail", http.StatusNotFound)
+		return
+	}
+	w.Write(data)
+}
+
+func GET_changePassword(w http.ResponseWriter, r *http.Request) {
+	file := filepath.Join(config.WebPathDir, "ApiWeb", "PassChange.html")
 	data, err := os.ReadFile(file)
 	if err != nil {
 		http.Error(w, file+" fail", http.StatusNotFound)
@@ -363,6 +375,7 @@ func GET_webPermission(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, file+" fail", http.StatusNotFound)
 		return
 	}
+	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }
 
@@ -379,7 +392,7 @@ func PUT_permissions(w http.ResponseWriter, r *http.Request) {
 	}
 	parent := r.Context().Value(contextUsername).(string)
 	var user User
-	if err := gormDB.Where("username = ?", req.TargetUser).First(&user).Error; err != nil {
+	if err := gormDB.Where("username = ?", strings.ToLower(req.TargetUser)).First(&user).Error; err != nil {
 		http.Error(w, "Tài khoản không tồn tại!", http.StatusNotFound)
 		return
 	}
@@ -389,7 +402,7 @@ func PUT_permissions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Tài khoản không có quyền hạn!", http.StatusUnauthorized)
 		return
 	}
-	err := updatePermsGORM(req.TargetUser, req.Permissions)
+	err := updatePermsGORM(strings.ToLower(req.TargetUser), req.Permissions)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -414,7 +427,7 @@ func PUT_changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := r.Context().Value(contextUsername).(string)
-	err := changePassGORM(user, req.TargetPass)
+	err := changePassGORM(strings.ToLower(user), req.TargetPass)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -432,7 +445,7 @@ func POST_reset_password(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var user User
-	result := gormDB.Where("username = ?", req.TargetUser).First(&user)
+	result := gormDB.Where("username = ?", strings.ToLower(req.TargetUser)).First(&user)
 
 	if result.Error != nil {
 		http.Error(w, "Tài khoản không tồn tại", http.StatusNotFound)
@@ -445,7 +458,7 @@ func POST_reset_password(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Tài khoản không có quyền hạn!", http.StatusUnauthorized)
 		return
 	}
-	err := resetPassGORM(req.TargetUser)
+	err := resetPassGORM(strings.ToLower(req.TargetUser))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -463,8 +476,8 @@ func POST_deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var user User
 	result := gormDB.Where("username = ?", req.TargetUser).First(&user)
-	if result != nil {
-		http.Error(w, "User không tồn tại", http.StatusNotFound)
+	if result.Error != nil {
+		http.Error(w, req.TargetUser+": User không tồn tại", http.StatusNotFound)
 		return
 	}
 
@@ -487,26 +500,37 @@ func POST_deleteUser(w http.ResponseWriter, r *http.Request) {
 
 var gormDB *gorm.DB
 
-func initGORM() {
+func initGORM() bool {
 	var err error
-	gormDB, err = gorm.Open(sqlite.Open("app_gorm.db"), &gorm.Config{})
+	os.MkdirAll(`C:\programdata\master`, os.ModePerm)
+	_, err = os.Stat(`C:\programdata\master\Data.db`)
+	i := err == nil
+	gormDB, err = gorm.Open(sqlite.Open(`C:\programdata\master\Data.db`), &gorm.Config{})
 	if err != nil {
 		LogInfo(&Logger.MAIN, "Không thể kết nối Database!")
 		os.Exit(1)
 	}
 	// Tự động tạo/cập nhật Bảng theo Struct User
 	gormDB.AutoMigrate(&User{})
+	return i
 }
 
 // 1. Cập nhật Quyền
 func updatePermsGORM(targetUser string, perms []string) error {
 	permsJSON, _ := json.Marshal(perms)
+	targetUser = strings.ToLower(targetUser)
+	LogInfo(&Logger.Debug, `permissions`, targetUser, string(permsJSON))
 	return gormDB.Model(&User{}).Where("username = ?", targetUser).Update("permissions", string(permsJSON)).Error
 }
 
 // 2. Reset Password
 func resetPassGORM(targetUser string) error {
-	return gormDB.Model(&User{}).Where("username = ?", targetUser).Update("password", "123456").Error
+	targetUser = strings.ToLower(targetUser)
+	pass, err := hashPassword(`123456`)
+	if err != nil {
+		return err
+	}
+	return gormDB.Model(&User{}).Where("username = ?", targetUser).Update("password", pass).Error
 }
 
 // 3. Xóa Account
@@ -517,5 +541,6 @@ func deleteUserGORM(targetUser string) error {
 // 2. Reset Password
 func changePassGORM(targetUser, password string) error {
 	p, _ := hashPassword(password)
+	targetUser = strings.ToLower(targetUser)
 	return gormDB.Model(&User{}).Where("username = ?", targetUser).Update("password", p).Error
 }

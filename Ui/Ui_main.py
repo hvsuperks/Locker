@@ -204,6 +204,7 @@ class MainWindow(QWidget):
                         tmp,
                         dirs_exist_ok=True
                     )
+                    dst = os.path.join(os.path.dirname(self.uploadRoot), name)
                 else:
                     if src != tmp:
                         shutil.copy2(src, tmp)

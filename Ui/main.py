@@ -12,7 +12,7 @@ from GetCRC import CRCChecker
 from ver import ver
 
 VER = ver
-upload_root = r"D:\SendFile" #r"D:\SendFile"
+upload_root = r"D:\SendFile\uploadQueue" #r"D:\SendFile"
 
 class SignalBus(QObject):
     update_signal = Signal(str, str, bool)

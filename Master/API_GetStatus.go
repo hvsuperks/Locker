@@ -8,7 +8,6 @@ import (
 	"maps"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -34,20 +33,8 @@ type May struct {
 }
 
 type Model struct {
-	ModelName string                 `json:"model_name"`
-	CongDoan  map[string]map[int]May `json:"congdoan"`
-}
-
-type MaxIDMap struct {
-	Marking int `json:"marking"`
-	AF      int `json:"af"`
-	OIS     int `json:"ois"`
-	Tilt    int `json:"tilt"`
-	Prism   int `json:"prism"`
-	Fra_AF  int `json:"fra_af"`
-	Fra_OIS int `json:"fra_ois"`
-	AOI     int `json:"aoi"`
-	Flag    int `json:"flag"`
+	ModelName string                    `json:"model_name"`
+	CongDoan  map[string]map[string]May `json:"congdoan"`
 }
 
 type SvelteST struct {
@@ -94,7 +81,8 @@ func AddFile(group, filename string) {
 	ListFile.Data[group][filename] = struct{}{}
 }
 
-func GetMachineList() SvelteST {
+func GetMachineList(perm string) SvelteST {
+	defer RecoverLog()
 	if time.Since(lastcheckMap.Load().(time.Time)) > 10*time.Second {
 		if _, err := os.Stat("Z:\\X3T1"); err == nil {
 			natonline.Store(true)
@@ -103,7 +91,7 @@ func GetMachineList() SvelteST {
 		}
 		lastcheckMap.Store(time.Now())
 	}
-	var sendWebControl = make(map[string]map[string]map[int]May)
+	var sendWebControl = make(map[string]map[string]map[string]May)
 	tempClients := make(map[string]*ClientStruct, len(clients.Client))
 	clients.mu.RLock()
 	maps.Copy(tempClients, clients.Client)
@@ -123,17 +111,17 @@ func GetMachineList() SvelteST {
 	for idClient, client := range tempClients {
 		client.mu.RLock()
 		model_name := client.Status.Model
-		if model_name == "" {
+		if model_name == "" || !strings.Contains(perm, idClient[:6]) {
 			client.mu.RUnlock()
 			continue
 		}
-		congdoan_name := config.TypeMap[idClient[6:7]]
-		may_name, _ := strconv.Atoi(idClient[7:])
+		congdoan_name := config.TypeMap[idClient[6:8]]
+		may_name := idClient[8:]
 		if _, ok := sendWebControl[model_name]; !ok {
-			sendWebControl[model_name] = map[string]map[int]May{}
+			sendWebControl[model_name] = map[string]map[string]May{}
 		}
 		if _, ok := sendWebControl[model_name][congdoan_name]; !ok {
-			sendWebControl[model_name][congdoan_name] = map[int]May{}
+			sendWebControl[model_name][congdoan_name] = map[string]May{}
 		}
 		sendWebControl[model_name][congdoan_name][may_name] = May{
 			Locker_PGM: client.Status.Locker_PGM,
@@ -143,7 +131,7 @@ func GetMachineList() SvelteST {
 			Merge:      client.Status.Merge,
 			Connect:    onlineTmp[idClient],
 			Ver:        fmt.Sprintf("%s|%s|%s", client.Status.VerAutoUpdate, client.Status.VerLocker, client.Status.VerUiLocker),
-			MesID:      client.Status.MesID,
+			MesID:      idClient[9:],
 			CurrentCRC: client.Status.CurrentCRC,
 		}
 
@@ -152,7 +140,7 @@ func GetMachineList() SvelteST {
 
 	models := []Model{}
 	for model, congdoans := range sendWebControl {
-		cd := map[string]map[int]May{}
+		cd := map[string]map[string]May{}
 		maps.Copy(cd, congdoans)
 		models = append(models, Model{
 			ModelName: model,
@@ -215,14 +203,16 @@ func GetMachineList() SvelteST {
 }
 
 func GET_clientStatus(w http.ResponseWriter, r *http.Request) {
-	LogInfo(&Logger.Debug, "GET_clientStatus")
-	i := GetMachineList()
+	perm := r.Context().Value(contextPermissions).(string)
+	i := GetMachineList(perm)
 	w.Header().Set("Content-Type", "application/json")
-	LogInfo(&Logger.Debug, json.NewEncoder(w).Encode(struct {
+	if err := json.NewEncoder(w).Encode(struct {
 		Type string   `json:"type"`
 		Data SvelteST `json:"data"`
 	}{
 		Type: "status",
 		Data: i,
-	}))
+	}); err != nil {
+		LogInfo(&Logger.Debug, err)
+	}
 }

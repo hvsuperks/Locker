@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -21,7 +22,11 @@ var clientSend = &http.Client{
 	Timeout: 5 * time.Second,
 }
 
+var muClientReport = sync.Mutex{}
+
 func ClientReport(payload clientPost) error {
+	muClientReport.Lock()
+	defer muClientReport.Unlock()
 	URL := fmt.Sprintf("http://%s:%s/api/clientReport",
 		config.IP.Load().(string),
 		config.MasterPort,
@@ -29,22 +34,23 @@ func ClientReport(payload clientPost) error {
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		LogInfo(&Logger.connect, "ERROR: ClientReport json Marshal", err)
+		LogInfo(&Logger.debug, "ClientReport json Marshal", err)
 		if payload.Type == "status" {
 			return err
 		}
-		go ClientReport(payload)
+		time.Sleep(time.Second * 2)
+		ClientReport(payload)
 		return err
 	}
 	// Tạo request
 	req, err := http.NewRequest(http.MethodPost, URL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		LogInfo(&Logger.connect, "ERROR:", "ClientReport Request", err)
+		LogInfo(&Logger.debug, "ClientReport Request", err)
 		if payload.Type == "status" {
 			return err
 		}
-		go ClientReport(payload)
-
+		time.Sleep(time.Second * 2)
+		ClientReport(payload)
 		return err
 	}
 
@@ -52,23 +58,24 @@ func ClientReport(payload clientPost) error {
 
 	resp, err := clientSend.Do(req)
 	if err != nil {
-		LogInfo(&Logger.connect, "ERROR:", "ClientReport client", err)
+		LogInfo(&Logger.debug, "ClientReport client", err)
 		if payload.Type == "status" {
 			return err
 		}
-		go ClientReport(payload)
+		time.Sleep(time.Second * 2)
+		ClientReport(payload)
 		return err
 	}
 	defer resp.Body.Close()
-
+	body, _ := io.ReadAll(resp.Body)
 	// Check status
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		LogInfo(&Logger.connect, "ERROR:", "ClientReport status :", resp.StatusCode, string(body))
+		LogInfo(&Logger.debug, "ClientReport status :", resp.StatusCode, string(body))
 		if payload.Type == "status" {
 			return err
 		}
-		go ClientReport(payload)
+		time.Sleep(time.Second * 2)
+		ClientReport(payload)
 	}
 	return nil
 }

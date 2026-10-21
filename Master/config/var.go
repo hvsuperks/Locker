@@ -84,15 +84,18 @@ var (
 	IsDebug    = false
 	StartTime  = ``
 	TypeMap    = map[string]string{
-		`0`: `Marking`,
-		`1`: `AF`,
-		`2`: `OIS`,
-		`3`: `Tilt`,
-		`4`: `Prism`,
-		`5`: `Fra_AF`,
-		`6`: `Fra_OIS`,
-		`7`: `Flag`,
-		`9`: `AOI`,
+		`00`: `Aging`,
+		`10`: `AF`,
+		`20`: `OIS`,
+		`30`: `Tilt`,
+		`31`: `Tilt`,
+		`32`: `Tilt-Ro`,
+		`33`: `Tilt-Ro`,
+		`40`: `Prism`,
+		`50`: `Fra-AF`,
+		`60`: `Fra-OIS`,
+		`70`: `Flag`,
+		`90`: `AOI`,
 	}
-	Ver = `9.4.1`
+	Ver = `9.5.3`
 )

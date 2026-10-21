@@ -4,11 +4,13 @@ import (
 	"Locker/config"
 	"Locker/script"
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gorilla/websocket"
 )
@@ -146,8 +148,53 @@ func Start(ctx context.Context, cancel context.CancelFunc, ver string) {
 	go udpBroadcast()
 	//go syscCSV(ctx)
 	//go CSVMerge(ctx)
+	mutexSaveModelListSlice.Store(false)
 	go manager.CleanUUID()
-	initGORM()
-	initAdmin()
+	if !initGORM() {
+		initAdmin()
+	}
+	LoadModelListSlice()
+	go DeleteOldFiles(config.HttpUpload, 3)
+	go HostPort()
 	apiManager(ctx, cancel)
+}
+
+var modellistGorm = modellistGormStruct{
+	mu:   sync.RWMutex{},
+	perm: []string{},
+}
+
+func LoadModelListSlice() {
+	modellistGorm.mu.RLock()
+	defer modellistGorm.mu.RUnlock()
+
+	var user User
+	err := gormDB.Where("username = ?", `admin`).First(&user).Error
+	if err != nil {
+		LogInfo(&Logger.Debug, err)
+		os.Exit(1)
+	}
+	err = json.Unmarshal([]byte(user.Permissions), &modellistGorm.perm)
+	if err != nil {
+		LogInfo(&Logger.Debug, err)
+		os.Exit(1)
+	}
+	if len(modellistGorm.perm) > 30 {
+		initAdmin()
+	}
+	LogInfo(&Logger.Debug, modellistGorm.perm)
+}
+
+var mutexSaveModelListSlice = atomic.Bool{}
+
+func SaveModelListSlice(Value string) {
+	if !mutexSaveModelListSlice.CompareAndSwap(false, true) {
+		return
+	}
+	modellistGorm.mu.Lock()
+	defer modellistGorm.mu.Unlock()
+	defer mutexSaveModelListSlice.Store(false)
+	modellistGorm.perm = append(modellistGorm.perm, Value)
+	updatePermsGORM(`admin`, modellistGorm.perm)
+	LogInfo(&Logger.Debug, `updatePermsGORM Admin`, Value)
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"Locker/config"
 	"context"
 )
 
@@ -10,7 +9,7 @@ type mClient struct {
 	cancel        context.CancelFunc
 	Log           chan<- []any
 	resetPackChan chan string
-	bind, color   chan config.KV
+	bind, color   chan KV
 }
 
 type DownloadStruct struct {

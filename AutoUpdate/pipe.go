@@ -16,20 +16,20 @@ func pipeStart(appname string, ver, last *atomic.Value) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					LogUnique(fmt.Sprintf("panic: %v", r))
+					Loginfo(fmt.Sprintf("panic: %v", r))
 					time.Sleep(time.Second)
 				}
 			}()
 			listener, err := winio.ListenPipe(`\\.\pipe\`+appname, nil)
 			if err != nil {
-				LogUnique("ERROR: Pipe", `\\.\pipe\`+appname, err)
+				Loginfo("ERROR: Pipe", `\\.\pipe\`+appname, err)
 				return
 			}
-			LogUnique("pipe Start")
+			Loginfo("pipe Start")
 			for {
 				conn, err := listener.Accept()
 				if err != nil {
-					LogUnique("ERROR: Pipe", `\\.\pipe\`+appname, err)
+					Loginfo("ERROR: Pipe", `\\.\pipe\`+appname, err)
 					return
 				}
 				go handleConn(conn, ver, last, appname)
@@ -74,7 +74,7 @@ var isShutdownLocker = atomic.Bool{}
 func handleConn(conn net.Conn, ver, last *atomic.Value, appname string) {
 	defer func() {
 		if r := recover(); r != nil {
-			LogUnique(fmt.Sprintf("panic: %v", r))
+			Loginfo(fmt.Sprintf("panic: %v", r))
 		}
 	}()
 	defer conn.Close()
@@ -84,7 +84,7 @@ func handleConn(conn net.Conn, ver, last *atomic.Value, appname string) {
 		defer conn.Close()
 		defer func() {
 			if r := recover(); r != nil {
-				LogUnique(fmt.Sprintf("panic: %v", r))
+				Loginfo(fmt.Sprintf("panic: %v", r))
 				time.Sleep(time.Second)
 			}
 		}()
@@ -96,7 +96,7 @@ func handleConn(conn net.Conn, ver, last *atomic.Value, appname string) {
 			}
 			_, err := conn.Write(i)
 			if err != nil {
-				LogUnique(appname, `conn.write`, err)
+				Loginfo(appname, `conn.write`, err)
 				return
 			}
 			time.Sleep(time.Second)
@@ -105,13 +105,10 @@ func handleConn(conn net.Conn, ver, last *atomic.Value, appname string) {
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
-			LogUnique(appname, `conn.SetReadDeadline`, err)
+			Loginfo(appname, `conn.SetReadDeadline`, err)
 			return
 		}
 		ver.Store(string(buf[:n]))
 		last.Store(time.Now())
-		if appname == `Service_locker` {
-			LogUnique(string(buf[:n]), time.Now())
-		}
 	}
 }

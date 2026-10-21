@@ -39,7 +39,7 @@ func Unzip(zipPath, dst string) error {
 }
 
 // Hàm nén folder
-func zipFolder(source, target string) error {
+func ZipFolder(source, target string) error {
 	zipFile, err := os.Create(target)
 	if err != nil {
 		return err

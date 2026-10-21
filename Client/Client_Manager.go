@@ -7,83 +7,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
 )
 
-func setStatus(keys int, data any) {
-	_, file, line, ok := runtime.Caller(1)
-	if ok {
-		LogInfo(&Logger.manager, "setStatus called from ", file, line)
-	}
-	LockMap(&STATUS.mu)
-	defer UnlockMap(&STATUS.mu)
-	switch keys {
-
-	case keyLocker_PGM:
-		st, ok := data.(config.Locker_state)
-		if !ok {
-			return
-		}
-		STATUS.Data.Locker_PGM = st
-
-	case keyLocker_CRC:
-		st, ok := data.(config.Locker_state)
-		if !ok {
-			return
-		}
-		STATUS.Data.Locker_CRC = st
-
-	case keyPGM:
-		st, ok := data.(config.FileMap_struct)
-		if !ok {
-			return
-		}
-		old := STATUS.Data.MasterMap.CRC
-		STATUS.Data.MasterMap = &config.MasterMap_struct{
-			CRC: old,
-			PGM: st,
-		}
-
-	case keyCRC:
-		st, ok := data.(config.Locker_state)
-		if !ok {
-			return
-		}
-		old := STATUS.Data.MasterMap
-		i := &config.MasterMap_struct{
-			PGM: old.PGM,
-			CRC: config.RegMap_struct{
-				CRC:    st.Value,
-				Color:  st.Color,
-				RegMap: old.CRC.RegMap,
-			},
-		}
-		STATUS.Data.MasterMap = i
-
-	case keyMerge:
-		st, ok := data.(config.Locker_state)
-		if !ok {
-			return
-		}
-		fmt.Println(st)
-		STATUS.Data.Merge = st
-	}
-	SendStatus <- struct{}{}
-}
-
 func Start(ctx context.Context, cancel context.CancelFunc) {
-	defer func() {
-		if err := recover(); err != nil {
-			LogInfo(&Logger.manager, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-			msgbox("Client Fail")
-			os.Exit(0)
-		}
-
-	}()
+	defer RecoverLog()
 	reconnectLock.Store(false)
 	fmt.Println("Start")
 	go func() {
@@ -96,21 +26,22 @@ func Start(ctx context.Context, cancel context.CancelFunc) {
 	}()
 
 	// PGM LoadFi
-	p := config.FileMap_struct{
+	p := FileMap_struct{
 		PGM:   script.RegRead(config.RegMasterPath, "PGM"),
 		MD5:   script.RegRead(config.RegMasterPath, "MD5"),
 		URL:   script.RegRead(config.RegMasterPath, "URL"),
 		Color: "Fail",
 	}
-	setStatus(keyPGM, p)
-	var c config.RegMap_struct
+	STATUS_PUT(&STATUS.MasterMap.PGM, p)
+
+	var c RegMap_struct
 	// CRC Load
 	if m, err := script.LoadDeepReg(config.RegCRCMasterPath); err == nil {
 		md5CRC := ""
 		if info, ok := m["info"]; ok {
 			md5CRC = info["md5"]
 		}
-		c = config.RegMap_struct{
+		c = RegMap_struct{
 			CRC:    script.RegRead(config.RegMasterPath, "CRC"),
 			RegMap: m,
 			Color:  "Fail",
@@ -118,23 +49,23 @@ func Start(ctx context.Context, cancel context.CancelFunc) {
 		}
 
 	} else {
-		LogInfo(&Logger.manager, "ERROR:", "CRC Load", err)
-		c = config.RegMap_struct{
+		LogInfo(&Logger.debug, "CRC Load", err)
+		c = RegMap_struct{
 			CRC:    "Fail",
 			RegMap: nil,
 			Color:  "Fail",
 		}
 	}
-	LockMap(&STATUS.mu)
-	STATUS.Data.MasterMap.CRC = c
-	UnlockMap(&STATUS.mu)
+
+	STATUS_PUT(&STATUS.MasterMap.CRC, c)
+
 	// Locker Load
 
 	pgmLock := script.RegRead(config.RegPath, "lockerpgm")
 	if strings.EqualFold(pgmLock, "Locked") {
-		setStatus(keyLocker_PGM, config.Locker_state{Value: "Locked", Color: "OK"})
+		STATUS_PUT(&STATUS.Locker_PGM, Locker_state{Value: "Locked", Color: "OK"})
 	} else {
-		setStatus(keyLocker_PGM, config.Locker_state{Value: "Unlock", Color: "Fail"})
+		STATUS_PUT(&STATUS.Locker_PGM, Locker_state{Value: "Unlock", Color: "Fail"})
 	}
 	//script.Setting_Load()
 	defer close(resetXOISChan)
@@ -146,13 +77,7 @@ func Start(ctx context.Context, cancel context.CancelFunc) {
 }
 
 func Packege_Manager(ctx context.Context, cancel context.CancelFunc, resetPackChan chan string, resetXOISChan chan struct{}) {
-	defer func() {
-		if err := recover(); err != nil {
-			LogInfo(&Logger.manager, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-			msgbox("PackAge Manager Fail")
-			os.Exit(0)
-		}
-	}()
+	defer RecoverLog()
 	// Tạo các biến kiểm tra hoạt động của app
 	var (
 		cancelCrc, cancelPgm, cancelMerge context.CancelFunc

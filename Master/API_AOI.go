@@ -22,12 +22,6 @@ func POST_uploadAOI(w http.ResponseWriter, r *http.Request) {
 
 }
 func aoiAction(w http.ResponseWriter, r *http.Request) {
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Parse form (max 10MB)
 	err := r.ParseMultipartForm(10 << 20)
 	if err != nil {
@@ -38,11 +32,13 @@ func aoiAction(w http.ResponseWriter, r *http.Request) {
 	file, handler, err := r.FormFile("image")
 	pp := r.FormValue("path")
 	if pp == "" {
+		LogInfo(&Logger.AOI, `Path Nil`)
 		http.Error(w, "path nil", http.StatusBadRequest)
 		return
 	}
 	p := pathConfig(pp)
 	if p == "" {
+		LogInfo(&Logger.AOI, `Path Fail: `, pp)
 		http.Error(w, "path nil", http.StatusBadRequest)
 		return
 	}

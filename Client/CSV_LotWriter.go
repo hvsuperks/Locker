@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-func LotWriterClient(ctx context.Context, lot string, ch chan config.CsvRow) {
+func LotWriterClient(ctx context.Context, lot string, ch chan CsvRow) {
 	dayFolder := "unknown"
 	wg.Add(1)
 	defer func() {
@@ -106,6 +106,7 @@ func LotWriterClient(ctx context.Context, lot string, ch chan config.CsvRow) {
 						updateFirstLine(Fullname, header)
 						f, err = os.OpenFile(Fullname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 						if err != nil {
+							LogInfo(&Logger.debug, err)
 							msg.RawFile.Result.Store(false)
 							msg.RawFile.Wg.Done()
 							return
@@ -119,39 +120,60 @@ func LotWriterClient(ctx context.Context, lot string, ch chan config.CsvRow) {
 	}
 }
 
-func updateFirstLine(fileName string, newHeader []string) error {
+func updateFirstLine(fileName string, newHeader []string) {
 	// 1. Đọc toàn bộ file
 	file, err := os.Open(fileName)
 	if err != nil {
-		return err
+		LogInfo(&Logger.debug, err)
+		return
 	}
 	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	file.Close()
+	head, err := reader.Read()
 	if err != nil {
-		return err
+		LogInfo(&Logger.debug, file, err)
+		file.Close()
+		return
 	}
-
-	// 2. Thay đổi dòng đầu (index 0)
-	if len(records) > 0 {
-		records[0] = newHeader
-	} else {
-		records = append(records, newHeader)
+	records := [][]string{}
+	records = append(records, newHeader)
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if len(head) != len(record) {
+			continue
+		}
+		if err != nil {
+			//Fmt("File NG")
+			LogInfo(&Logger.debug, file, err)
+			continue // ❗ file hỏng → dừng luôn
+		}
+		r := make([]string, len(newHeader))
+		for i := range newHeader {
+			if i >= len(record) {
+				r[i] = "-"
+			} else {
+				r[i] = record[i]
+			}
+		}
+		records = append(records, record)
 	}
+	file.Close()
 
 	// 3. Ghi đè lại toàn bộ
 	outFile, err := os.Create(fileName)
 	if err != nil {
-		return err
+		LogInfo(&Logger.debug, err)
+		return
 	}
 	defer outFile.Close()
-
 	writer := csv.NewWriter(outFile)
 	defer writer.Flush()
-	return writer.WriteAll(records)
+	writer.WriteAll(records)
 }
 
-func writerFunc(writer *csv.Writer, msg config.CsvRow, lot string, header []string) {
+func writerFunc(writer *csv.Writer, msg CsvRow, lot string, header []string) {
 	defer msg.RawFile.Wg.Done()
 	defer writer.Flush()
 	row := msg.Data

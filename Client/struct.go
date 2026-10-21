@@ -1,4 +1,4 @@
-package config
+package main
 
 import (
 	"sync"
@@ -27,20 +27,6 @@ type RegMap_struct struct {
 type MasterMap_struct struct {
 	CRC RegMap_struct  `json:"crc"`
 	PGM FileMap_struct `json:"pgm"`
-}
-
-type STATUS_struct struct {
-	MasterMap     *MasterMap_struct `json:"mastermap"`
-	VerLocker     string            `json:"verlocker"`
-	VerUiLocker   string            `json:"veruilocker"`
-	VerAutoUpdate string            `json:"verautoupdate"`
-	Model         string            `json:"model"`
-	ID            string            `json:"id"`
-	Locker_PGM    Locker_state      `json:"lockerpgm"` // Lưu trạng thái Unlock / Lock PGM
-	Locker_CRC    Locker_state      `json:"lockercrc"` // Lưu trạng thái Unlock / Lock CRC
-	Merge         Locker_state      `json:"merge"`     // Trạng thái ghép file
-	MesID         string            `json:"mesid"`
-	CurrentCRC    string            `json:"currentcrc"`
 }
 
 type RegFail struct {

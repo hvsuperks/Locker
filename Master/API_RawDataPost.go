@@ -2,7 +2,6 @@ package main
 
 import (
 	"Locker/config"
-	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -108,17 +107,6 @@ func HandleCSV(w http.ResponseWriter, r *http.Request) {
 			os.Remove(i)
 		}
 	}
-	go func(f string) {
-		WorkerList.mu.Lock()
-		_, ok := WorkerList.Data[f]
-		if ok {
-			WorkerList.mu.Unlock()
-			return
-		}
-		WorkerList.Data[f] = struct{}{}
-		WorkerList.mu.Unlock()
-		csvWorkerChan <- f
-	}(fullPath)
 }
 
 type WorkerListType struct {
@@ -131,48 +119,49 @@ var WorkerList = WorkerListType{
 	Data: map[string]struct{}{},
 }
 
-var csvWorkerChan = make(chan string, 50)
+//var csvWorkerChan = make(chan string, 50)
 
-func syscCSV(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case srcPath := <-csvWorkerChan:
-			rel := strings.TrimPrefix(srcPath, config.CsvTMPPath)
-			part := strings.Split(rel, "\\")
-			model, cd, date, lot, sourcename := part[0], part[1], part[02], part[3], part[4]
-			dstPath := filepath.Join(
-				config.BackupRawData,
-				model, cd,
-				"20"+date[:2], // Kết quả: 2026
-				date[2:4],     // Kết quả: 12 (Sửa từ 2:2 thành 2:4)
-				date[4:],      // Kết quả: 03
-				lot+".csv",
-			)
-			os.MkdirAll(filepath.Dir(dstPath), os.ModePerm)
+/*
+	func syscCSV(ctx context.Context) {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case srcPath := <-csvWorkerChan:
+				rel := strings.TrimPrefix(srcPath, config.CsvTMPPath)
+				part := strings.Split(rel, "\\")
+				model, cd, date, lot, sourcename := part[0], part[1], part[02], part[3], part[4]
+				dstPath := filepath.Join(
+					config.BackupRawData,
+					model, cd,
+					"20"+date[:2], // Kết quả: 2026
+					date[2:4],     // Kết quả: 12 (Sửa từ 2:2 thành 2:4)
+					date[4:],      // Kết quả: 03
+					lot+".csv",
+				)
+				os.MkdirAll(filepath.Dir(dstPath), os.ModePerm)
 
-			err := processCSV(srcPath, dstPath, lot, model, cd, date, sourcename)
-			if err == nil {
-				err = os.Remove(srcPath)
-				if err != nil {
-					LogInfo(&Logger.CSV, "syscCSV", "Remove Fail", srcPath)
+				err := processCSV(srcPath, dstPath, lot, model, cd, date, sourcename)
+				if err == nil {
+					err = os.Remove(srcPath)
+					if err != nil {
+						LogInfo(&Logger.CSV, "syscCSV", "Remove Fail", srcPath)
+						WorkerList.mu.Lock()
+						delete(WorkerList.Data, srcPath)
+						WorkerList.mu.Unlock()
+					}
+				} else {
+					if err.Error() != "Header - Read File Fail" {
+						LogInfo(&Logger.CSV, "syscCSV", sourcename, err)
+					}
 					WorkerList.mu.Lock()
 					delete(WorkerList.Data, srcPath)
 					WorkerList.mu.Unlock()
 				}
-			} else {
-				if err.Error() != "Header - Read File Fail" {
-					LogInfo(&Logger.CSV, "syscCSV", sourcename, err)
-				}
-				WorkerList.mu.Lock()
-				delete(WorkerList.Data, srcPath)
-				WorkerList.mu.Unlock()
 			}
 		}
 	}
-}
-
+*/
 func processCSV(UpdateFile, SourcFile, lot, model, cd, date, sourcename string) error {
 	defer func() {
 		if r := recover(); r != nil {

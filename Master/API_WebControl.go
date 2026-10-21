@@ -35,7 +35,7 @@ func GET_resetVNC(w http.ResponseWriter, r *http.Request) {
 
 func POST_resetMES(w http.ResponseWriter, r *http.Request) {
 	ID := r.FormValue("id")
-	go MultiClientSend(ID, "cmd", "taskkill|/IM|jahwa_ecm_agent_v2.exe|/F", nil)
+	go MultiClientSend(ID, "cmd", "taskkill /IM jahwa_ecm_agent_v2.exe /F", nil)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 	LogInfo(&Logger.API, "Reset MES", ID)
@@ -74,7 +74,7 @@ func POST_LockerChange(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Mode Fail (lockercrc,lockerpgm)", http.StatusBadRequest)
 		return
 	}
-	if len(ID) == 9 {
+	if len(ID) > 9 {
 		ClientWorkerFuncSet(ID, "LockerChange_"+mode, state, nil)
 	} else {
 		go MultiClientSend(ID, "LockerChange_"+mode, state, nil)

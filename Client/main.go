@@ -21,6 +21,7 @@ func main() {
 	if _, err := os.Stat("C:\\programdata\\locker\\Fail"); err == nil {
 		return
 	}
+	os.MkdirAll(`D:\SendFile`, os.ModePerm)
 	isdownload.Store(false)
 	isCurrentCRC.Store("None")
 	VerAutoUpdate.Store("")
@@ -57,17 +58,17 @@ func main() {
 	go PipeConnect()
 	go StartPipeServer()
 	// Mở Port UDP
-	go OpenUDP10001()
+	go OpenUDP10001(`Locker`, `10001`, `UDP`)
 
 	// Đọc ID và phân loại máy
 	ID, model = ID_Read()
 	if len(ID) != 9 {
 		LogInfo(&Logger.manager, "INFO:", "ID Fail", ID)
 	}
-	STATUS.Data.VerLocker = Ver
-	STATUS.Data.ID = ID
-	STATUS.Data.Model = model
-	STATUS.Data.MesID = script.RegRead("SOFTWARE\\CubeX\\MES_SET", "machine_cd")
+	STATUS.VerLocker = Ver
+	STATUS.ID = ID
+	STATUS.Model = model
+	STATUS.MesID = script.RegRead("SOFTWARE\\CubeX\\MES_SET", "machine_cd")
 
 	// ListenMasterUDP
 	go ListenMasterUDP(Log)
@@ -76,6 +77,9 @@ func main() {
 	go PingPong(ctx, cancel)
 	go SendStatusFunc(ctx)
 	go copyTMPtoMes(ctx)
+	go SendFileToMaster(ctx)
+	isHostPot.Store(time.Now())
+	go SendtoHostPost()
 	select {}
 }
 

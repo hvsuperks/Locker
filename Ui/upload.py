@@ -1,4 +1,4 @@
-import time,  os, requests,threading
+import time,  os, requests,threading,re
 from datetime import datetime
 lasttime = time.time()
 
@@ -27,6 +27,8 @@ class UploadFile():
                 for root, _, files in os.walk(self.uploadRoot):
                     for name in files:
                         if name.lower().endswith(".tmp"):
+                            continue
+                        if not re.match(r'^(?:\d{9}|unknown)_\d{8}_\d{6}_.+$', name):
                             continue
                         filepath = os.path.join(root,name)
                         rel = os.path.relpath(root, self.uploadRoot)

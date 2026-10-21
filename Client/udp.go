@@ -18,6 +18,14 @@ var httpDownload = atomic.Value{}
 var VerAutoUpdate = atomic.Value{}
 var httpUpload = atomic.Value{}
 
+type udpStruct struct {
+	Locker     string `json:"locker"`
+	UiLocker   string `json:"uilocker"`
+	Aoi        string `json:"aoi"`
+	UiAoi      string `json:"uiaoi"`
+	AutoUpdate string `json:"update"`
+}
+
 func ListenMasterUDP(Log chan []any) {
 	httpDownload.Store("")
 	httpUpload.Store("")
@@ -33,7 +41,6 @@ func ListenMasterUDP(Log chan []any) {
 	defer conn.Close()
 
 	buf := make([]byte, 4096)
-	LogInfo(&Logger.debug, `UDP Start`)
 	for {
 		n, remoteAddr, err := conn.ReadFromUDP(buf)
 		if err != nil {
@@ -41,20 +48,14 @@ func ListenMasterUDP(Log chan []any) {
 			time.Sleep(time.Second)
 			continue
 		}
-		var msg struct {
-			Locker     string `json:"locker"`
-			UiLocker   string `json:"uilocker"`
-			Aoi        string `json:"aoi"`
-			UiAoi      string `json:"uiaoi"`
-			AutoUpdate string `json:"update"`
-		}
+		var msg udpStruct
 		if err := json.Unmarshal(buf[:n], &msg); err != nil {
 			LogInfo(&Logger.debug, `UDP Unmarshal Fail`, err)
 			continue
 		}
+
 		ip := remoteAddr.IP.To4().String()
 		IP := config.IP.Load().(string)
-		LogInfo(&Logger.debug, `UDP IP :`, ip)
 		if ip != IP {
 			config.IP.Store(ip)
 			LogInfo(&Logger.debug, `UDP IP :`, ip)
@@ -62,11 +63,16 @@ func ListenMasterUDP(Log chan []any) {
 			httpUpload.Store(fmt.Sprintf("http://%s:%s/api/uploadFile", ip, config.MasterPort))
 		}
 		AutoUpdateChange <- msg.AutoUpdate
-
+		isHostPot.Store(time.Now())
+		if UDPrepeatMSG != msg {
+			muUDPrepeatMSG.Lock()
+			UDPrepeatMSG = msg
+			muUDPrepeatMSG.Unlock()
+		}
 	}
 }
 
-func OpenUDP10001() error {
+func OpenUDP10001(portName string, portNum string, mode string) error {
 
 	// 1. Check rule tồn tại chưa
 	checkCmd := exec.Command(
@@ -75,7 +81,7 @@ func OpenUDP10001() error {
 		"firewall",
 		"show",
 		"rule",
-		"name=Locker_10001",
+		"name="+portName+"_"+portNum,
 	)
 	checkCmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,       // Ẩn cửa sổ
@@ -96,11 +102,11 @@ func OpenUDP10001() error {
 		"firewall",
 		"add",
 		"rule",
-		"name=Locker_10001",
+		"name="+portName+"_"+portNum,
 		"dir=in",
 		"action=allow",
-		"protocol=UDP",
-		"localport=10001",
+		"protocol="+mode,
+		"localport="+portNum,
 	)
 	addCmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,       // Ẩn cửa sổ

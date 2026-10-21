@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -25,14 +26,14 @@ func StartPipeServer() {
 	for {
 		pipe, err := winio.ListenPipe(`\\.\pipe\Locker`, nil)
 		if err != nil {
-			LogInfo(&Logger.connect, "ERRR:", `Pipe \\.\pipe\Locker ListenPipe`, err)
+			LogInfo(&Logger.debug, `Pipe \\.\pipe\Locker ListenPipe`, err)
 			time.Sleep(time.Second)
 			continue
 		}
 		for {
 			conn, err := pipe.Accept()
 			if err != nil {
-				LogInfo(&Logger.connect, "ERRR:", `Pipe \\.\pipe\Locker Accept`, err)
+				LogInfo(&Logger.debug, `Pipe \\.\pipe\Locker Accept`, err)
 				break
 			}
 			go pipeHandler(conn)
@@ -52,29 +53,28 @@ func pipeHandler(pipe net.Conn) {
 			if isDisconnect.Load() {
 				connect = "Connecting"
 			}
-			STATUS.mu.RLock()
+			tmpstatus := STATUS_GET(&STATUS).(STATUS_struct)
 			urlHome := httpDownload.Load().(string)
 			urlUpload := httpUpload.Load().(string)
 			data := map[string][]uiChanStruct{
 				"uichange": {
 					{Key: "ID", Value: "ID: " + ID, State: true},
-					{Key: "CRC", Value: "CRC: " + STATUS.Data.MasterMap.CRC.CRC, State: STATUS.Data.MasterMap.CRC.Color == "OK"},
-					{Key: "PGM", Value: "PGM: " + STATUS.Data.MasterMap.PGM.PGM, State: STATUS.Data.MasterMap.PGM.Color == "OK"},
-					{Key: "CRC_LOCKER", Value: "CRC Locker: " + STATUS.Data.Locker_CRC.Value, State: STATUS.Data.Locker_CRC.Color == "OK"},
-					{Key: "PGM_LOCKER", Value: "PGM Locker: " + STATUS.Data.Locker_PGM.Value, State: STATUS.Data.Locker_PGM.Color == "OK"},
+					{Key: "CRC", Value: "CRC: " + tmpstatus.MasterMap.CRC.CRC, State: tmpstatus.MasterMap.CRC.Color == "OK"},
+					{Key: "PGM", Value: "PGM: " + tmpstatus.MasterMap.PGM.PGM, State: tmpstatus.MasterMap.PGM.Color == "OK"},
+					{Key: "CRC_LOCKER", Value: "CRC Locker: " + STATUS.Locker_CRC.Value, State: STATUS.Locker_CRC.Color == "OK"},
+					{Key: "PGM_LOCKER", Value: "PGM Locker: " + STATUS.Locker_PGM.Value, State: STATUS.Locker_PGM.Color == "OK"},
 					{Key: "CONNECT", Value: connect, State: isDisconnect.Load()},
 					{Key: "VERSION", Value: "Go:" + Ver, State: true},
-					{Key: "MERGE", Value: STATUS.Data.Merge.Value, State: STATUS.Data.Merge.Color == "OK"},
+					{Key: "MERGE", Value: STATUS.Merge.Value, State: STATUS.Merge.Color == "OK"},
 				},
 				"url": {
 					{Key: "home", Value: urlHome},
 					{Key: "upload", Value: urlUpload},
 				},
 			}
-			STATUS.mu.RUnlock()
 			pipe.SetWriteDeadline(time.Now().Add(3 * time.Second))
 			if err := enc.Encode(data); err != nil {
-				LogInfo(&Logger.connect, "ERROR:", "Locker send Fail", err)
+				LogInfo(&Logger.debug, "Locker send Fail", err)
 				pipe.Close()
 				return
 			}
@@ -86,7 +86,7 @@ func pipeHandler(pipe net.Conn) {
 		var msg UiReciver
 		pipe.SetReadDeadline(time.Now().Add(3 * time.Second))
 		if err := dec.Decode(&msg); err != nil {
-			LogInfo(&Logger.connect, "ERROR:", "Locker Decode Fail", err)
+			LogInfo(&Logger.debug, "Locker Decode Fail", err)
 			return
 		}
 		dispacht(msg, &isVer)
@@ -104,9 +104,7 @@ func dispacht(msg UiReciver, isVer *string) {
 		case "crc":
 		case "pgm_locker":
 		case "crc_locker":
-			STATUS.mu.RLock()
-			i := STATUS.Data.Locker_CRC.Value
-			STATUS.mu.RUnlock()
+			i := STATUS_GET(&STATUS.Locker_CRC.Value).(string)
 			if i == "Unlock" {
 				handlelocker_state("lockercrc", Command{Action: "Locked"})
 			} else {
@@ -121,21 +119,19 @@ func dispacht(msg UiReciver, isVer *string) {
 	case "crc":
 		if msg.Key != isCurrentCRC.Load().(string) {
 			isCurrentCRC.Store(msg.Key)
+			STATUS_PUT(&STATUS.CurrentCRC, strings.ToUpper(msg.Key))
 			SendStatus <- struct{}{}
 		}
 	case "ver":
 		if isVer != &msg.Key {
 			*isVer = msg.Key
-			LockMap(&STATUS.mu)
-			STATUS.Data.VerUiLocker = *isVer
-			UnlockMap(&STATUS.mu)
+			STATUS_PUT(&STATUS.VerUiLocker, *isVer)
 		}
 	}
 }
 
 func PipeConnect() error {
 	timeout := 3 * time.Second
-	LogInfo(&Logger.debug, `Start`)
 	for {
 		conn, err := winio.DialPipe(`\\.\pipe\Service_locker`, &timeout)
 		if err != nil {
@@ -181,9 +177,8 @@ func AutoUpdateHandler(conn net.Conn) {
 			go cleanupAndExit()
 		} else if VerAutoUpdate.Load() != i {
 			VerAutoUpdate.Store(i)
-			LockMap(&STATUS.mu)
-			STATUS.Data.VerAutoUpdate = i
-			UnlockMap(&STATUS.mu)
+
+			STATUS_PUT(&STATUS.VerAutoUpdate, i)
 		}
 	}
 }

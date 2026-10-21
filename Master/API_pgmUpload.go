@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"slices"
 	"strings"
 	"time"
@@ -40,17 +39,13 @@ func Get_pgmUpload(w http.ResponseWriter, r *http.Request) {
 		"cdlist":    cdlist,
 	})
 	if err != nil {
-		LogInfo(&Logger.API, "PGMZipUpload", err)
+		LogInfo(&Logger.Debug, "PGMZipUpload", err)
 	}
 }
 
 // Post model, cd, version, pid, mode, file
 func POST_pgmUpload(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if err := recover(); err != nil {
-			LogInfo(&Logger.Debug, fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-		}
-	}()
+	defer RecoverLog()
 	err := r.ParseMultipartForm(100 << 20) // 100MB
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -62,12 +57,6 @@ func POST_pgmUpload(w http.ResponseWriter, r *http.Request) {
 	version := r.FormValue("version")
 	pid := r.FormValue("pid")
 	mode := r.FormValue("mode")
-	file, _, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
 
 	saveDir := filepath.Join(config.HttpMasterDir, model, cd)
 	os.MkdirAll(saveDir, 0755)
@@ -83,13 +72,20 @@ func POST_pgmUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if mode == "remove" {
+		LogInfo(&Logger.Debug, filename)
 		pgm_master_list.mu.Lock()
 		md := pgm_master_list.Data[model+"_"+cd]
 		if md != nil {
-			delete(pgm_master_list.Data, model+"_"+cd)
+			delete(md, filename)
 		}
 		pgm_master_list.mu.Unlock()
 	} else {
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
 		dst, err := os.Create(savePath)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

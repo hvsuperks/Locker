@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -60,7 +61,7 @@ var (
 	logMu      sync.Mutex
 )
 
-func LogUnique(args ...any) {
+func Loginfo(args ...any) {
 
 	_, file, line, _ := runtime.Caller(1)
 	msg := fmt.Sprintf(
@@ -141,5 +142,17 @@ func keepLastLogs(folder string, maxFiles int) {
 
 	for _, f := range files[maxFiles:] {
 		os.Remove(f.Name)
+	}
+}
+
+func RecoverLog() {
+	if r := recover(); r != nil {
+		i := fmt.Sprintf(
+			"[%s] PANIC: %v\n%s\n",
+			time.Now().Format("2006-01-02 15:04:05"),
+			r,
+			debug.Stack(),
+		)
+		Loginfo(i)
 	}
 }

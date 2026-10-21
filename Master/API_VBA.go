@@ -104,6 +104,7 @@ func GET_VBArawdata(w http.ResponseWriter, r *http.Request) {
 			}
 			for i := mi; i <= ma; i++ {
 				paths = append(paths, filepath.Join(SourcePath, date, fmt.Sprintf("%s%s_%s_%02d", model, date, part, i)))
+				paths = append(paths, filepath.Join(SourcePath, date[:4], date[4:6], date[6:], fmt.Sprintf("%s%s_%s_%02d.csv", model, date, part, i)))
 			}
 		} else {
 			l, err := strconv.Atoi(lot[0])
@@ -111,6 +112,7 @@ func GET_VBArawdata(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			paths = append(paths, filepath.Join(SourcePath, date, fmt.Sprintf("%s%s_%s_%02d", model, date, part, l)))
+			paths = append(paths, filepath.Join(SourcePath, date[:4], date[4:6], date[6:], fmt.Sprintf("%s%s_%s_%02d.csv", model, date, part, l)))
 		}
 	}
 
@@ -121,13 +123,19 @@ func GET_VBArawdata(w http.ResponseWriter, r *http.Request) {
 	csvData := []map[string]string{}
 	csvHead := []string{}
 	for _, path := range paths {
-		LogInfo(&Logger.Debug, path)
-		if listcsv, err := os.ReadDir(path); err == nil {
-			for _, i := range listcsv {
-				if strings.HasSuffix(i.Name(), `.csv`) {
-					p := filepath.Join(path, i.Name())
-					LogInfo(&Logger.Debug, p)
-					readDataCsv(i.Name(), p, &csvHead, &csvData)
+		f, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		if !f.IsDir() {
+			readDataCsv(f.Name(), path, &csvHead, &csvData)
+		} else {
+			if listcsv, err := os.ReadDir(path); err == nil {
+				for _, i := range listcsv {
+					if strings.HasSuffix(i.Name(), `.csv`) {
+						p := filepath.Join(path, i.Name())
+						readDataCsv(i.Name(), p, &csvHead, &csvData)
+					}
 				}
 			}
 		}
@@ -139,14 +147,22 @@ func GET_VBArawdata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmp := make([]string, len(csvHead)+1)
+	LogInfo(&Logger.Debug, `csvHead`)
+	LogInfo(&Logger.Debug, `csvData`)
 	for _, row := range csvData {
 		tmp[0] = row[`source`]
 		for i, key := range csvHead {
 			value, ok := row[key]
-			if part == "AF" && (!ok || value == "-") {
+			if (part == "AF" || strings.Contains(strings.ToLower(part), "tilt")) && (!ok || value == "-" || value == "") {
 				value, ok = row[key+"_90"]
-				if value == "-" || !ok {
-					value = row[key+"_180"]
+				if value == "-" || !ok || value == "" {
+					value, ok = row[key+"_180"]
+					if value == "-" || !ok || value == "" {
+						value, ok = row[key+"90"]
+						if value == "-" || !ok || value == "" {
+							value, ok = row[key+"180"]
+						}
+					}
 				}
 			}
 			if value == "" {
@@ -170,7 +186,6 @@ func readDataCsv(name, path string, csvHead *[]string, csvData *[]map[string]str
 	reader := csv.NewReader(f)
 	reader.FieldsPerRecord = -1
 	header, _ := reader.Read()
-	LogInfo(&Logger.Debug, err)
 	n := true
 	for {
 		row, err := reader.Read()

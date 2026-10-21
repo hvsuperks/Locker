@@ -13,11 +13,7 @@ import (
 func CaseInsensitive(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/api/") {
-			i := r.URL.Path
 			r.URL.Path = strings.ToLower(r.URL.Path)
-			LogInfo(&Logger.Debug, i, " => ", r.URL.Path)
-		} else {
-			LogInfo(&Logger.Debug, r.URL.Path)
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -53,22 +49,22 @@ func apiManager(ctx context.Context, cancal context.CancelFunc) {
 	mux.HandleFunc("POST /api/uploadfile", POST_uploadFile)
 
 	// Upload AOI
-	mux.HandleFunc("POST /api/uploadaoi", POST_uploadAOI)
+	mux.HandleFunc("POST /uploadAOI", POST_uploadAOI)
 
 	// Update PGM
 	mux.HandleFunc("POST /api/update", POST_updatePGM)
 
 	// VBA get RawData
-	mux.HandleFunc("/api/get-thead", getListRawDataVBA)
-	mux.HandleFunc("/api/get-chetaoMap", getListChetao)
-	mux.HandleFunc("/api/rawdatapost", HandleCSV)
+	mux.HandleFunc("GET /api/get-thead", getListRawDataVBA)
+	mux.HandleFunc("GET /api/get-chetaoMap", getListChetao)
+	mux.HandleFunc("POST /api/rawdatapost", HandleCSV)
 	mux.HandleFunc("GET /api/getrawdata", GET_VBArawdata)
 	mux.HandleFunc("GET /api/vbatool", GET_VBAtool)
 	// Version Change
 	mux.HandleFunc("POST /api/verchange", Protect(perm_VerChange, verChange))
 
 	// Client Sync Time
-	mux.HandleFunc("/api/getTime", GetTime)
+	mux.HandleFunc("GET /api/getTime", GetTime)
 
 	// Client Report
 	mux.HandleFunc("POST /api/clientreport", POST_clientReport)
@@ -118,6 +114,7 @@ func apiManager(ctx context.Context, cancal context.CancelFunc) {
 	mux.HandleFunc("GET /webPermission", AuthMiddleware(GET_webPermission))
 
 	mux.HandleFunc("PUT /api/changepassword", AuthMiddleware(PUT_changePassword))
+	mux.HandleFunc("GET /api/changepassword", AuthMiddleware(GET_changePassword))
 	mux.HandleFunc("POST /api/resetpassword", AuthMiddleware(POST_reset_password))
 	mux.HandleFunc("POST /api/deleteuser", AuthMiddleware(POST_deleteUser))
 

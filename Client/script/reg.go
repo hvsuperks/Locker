@@ -112,6 +112,20 @@ func SaveMapToReg(rootPath string, data map[string]map[string]string) error {
 	return nil
 }
 
-func RegDelete(path string) {
-	registry.DeleteKey(registry.CURRENT_USER, path)
+func RegDelete(path string) error {
+	return DeleteTree(registry.CURRENT_USER, path)
+}
+
+func DeleteTree(root registry.Key, path string) error {
+	k, err := registry.OpenKey(root, path, registry.ENUMERATE_SUB_KEYS|registry.SET_VALUE)
+	if err == nil {
+		names, _ := k.ReadSubKeyNames(-1)
+		k.Close()
+
+		for _, n := range names {
+			DeleteTree(root, path+"\\"+n)
+		}
+	}
+
+	return registry.DeleteKey(root, path)
 }

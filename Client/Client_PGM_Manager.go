@@ -3,11 +3,9 @@ package main
 import (
 	"Locker/config"
 	"Locker/script"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -16,13 +14,7 @@ import (
 )
 
 func (a mClient) pgmManager(pgmRuning *atomic.Bool, LockerChan, Restart_XOIS chan struct{}) {
-	defer func() {
-		if err := recover(); err != nil {
-			LogInfo(&Logger.pgm, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-			msgbox("PGM Manager Fail")
-			os.Exit(0)
-		}
-	}()
+	defer RecoverLog()
 	defer func() {
 		pgmRuning.Store(false)
 
@@ -41,11 +33,10 @@ func (a mClient) pgmManager(pgmRuning *atomic.Bool, LockerChan, Restart_XOIS cha
 	}
 	pgmRuning.Store(true)
 	//Kiểm tra PGM
-	STATUS.mu.RLock()
-	pgm := STATUS.Data.MasterMap.PGM.PGM
-	md5 := STATUS.Data.MasterMap.PGM.MD5
-	url := STATUS.Data.MasterMap.PGM.URL
-	STATUS.mu.RUnlock()
+	tmppgm := STATUS_GET(&STATUS.MasterMap.PGM).(FileMap_struct)
+	pgm := tmppgm.PGM
+	md5 := tmppgm.MD5
+	url := tmppgm.URL
 	if pgm == "" || pgm == "Fail" || md5 == "" || url == "" {
 		return
 	}
@@ -63,37 +54,30 @@ func (a mClient) pgmManager(pgmRuning *atomic.Bool, LockerChan, Restart_XOIS cha
 		err := script.DownloadFile(url, masterZip)
 		isdownload.Store(false)
 		if err != nil {
-			LogInfo(&Logger.connect, "ERROR:", url, masterZip, err)
-			setStatus(keyPGM, config.FileMap_struct{PGM: "Fail", Color: "Fail"})
+			LogInfo(&Logger.debug, url, masterZip, err)
+			STATUS_PUT(&STATUS.MasterMap.PGM, FileMap_struct{PGM: "Fail", Color: "Fail"})
 		}
 		return
 	}
 	isMd5, err := script.GetMD5(masterZip)
 	if err != nil || md5 != isMd5 {
-		LockMap(&STATUS.mu)
-		m := STATUS.Data.MasterMap.PGM
-		m.MD5 = isMd5
-		m.Color = "Fail"
-		STATUS.Data.MasterMap.PGM = m
-		UnlockMap(&STATUS.mu)
-		setStatus(keyPGM, config.FileMap_struct{PGM: pgm, Color: "Fail"})
+		tmppgm.MD5 = isMd5
+		tmppgm.Color = "Fail"
+		tmppgm.PGM = pgm
+		STATUS_PUT(&STATUS.MasterMap.PGM, tmppgm)
 		isdownload.Store(true)
 		err := script.DownloadFile(url, masterZip)
 		isdownload.Store(false)
 		if err != nil {
-			LogInfo(&Logger.connect, "ERROR:", url, masterZip, err)
-			setStatus(keyPGM, config.FileMap_struct{PGM: "Fail", Color: "Fail"})
+			LogInfo(&Logger.debug, url, masterZip, err)
+			STATUS_PUT(&STATUS.MasterMap.PGM.PGM, "Fail")
 		}
 		return
 	}
-	LockMap(&STATUS.mu)
-	m := STATUS.Data.MasterMap.PGM
-	m.MD5 = isMd5
-	m.Color = "Fail"
-	STATUS.Data.MasterMap.PGM = m
-	UnlockMap(&STATUS.mu)
+	tmppgm.MD5 = isMd5
+	tmppgm.Color = "Fail"
 	if script.Unzip(masterZip, masterXOISdir) != nil {
-		setStatus(keyPGM, config.FileMap_struct{PGM: pgm, Color: "Fail"})
+		STATUS_PUT(&STATUS.MasterMap.PGM, tmppgm)
 		return
 	}
 
@@ -114,8 +98,10 @@ func (a mClient) pgmManager(pgmRuning *atomic.Bool, LockerChan, Restart_XOIS cha
 		err := script.DownloadFile(url, masterZip)
 		isdownload.Store(false)
 		if err != nil {
-			LogInfo(&Logger.pgm, "ERROR:", url, masterZip, err)
-			setStatus(keyPGM, config.FileMap_struct{PGM: "Fail", Color: "Fail"})
+			LogInfo(&Logger.debug, url, masterZip, err)
+			tmppgm.PGM = `Fail`
+			tmppgm.Color = `Fail`
+			STATUS_PUT(&STATUS.MasterMap.PGM.PGM, "Fail")
 		}
 		<-a.ctx.Done()
 		return
@@ -127,27 +113,21 @@ func (a mClient) pgmManager(pgmRuning *atomic.Bool, LockerChan, Restart_XOIS cha
 }
 
 func (a mClient) WatchLock_file(LockerChan chan struct{}, Md5Mon map[string]string, exts []string) {
-	defer func() {
-		if err := recover(); err != nil {
-			LogInfo(&Logger.pgm, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-			msgbox("Watch Lock file XOIS Fail")
-			os.Exit(0)
-		}
-	}()
+	defer RecoverLog()
 	extMap := make(map[string]struct{})
 	for _, e := range exts {
 		extMap[strings.ToLower(e)] = struct{}{}
 	}
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		LogInfo(&Logger.pgm, "ERROR:", "watcher error:"+err.Error())
+		LogInfo(&Logger.debug, "watcher error:"+err.Error())
 		panic("watcher error:" + err.Error())
 	}
 	defer watcher.Close()
 
 	err = watcher.Add(config.XoisPath)
 	if err != nil {
-		LogInfo(&Logger.pgm, "ERROR:", "watch add error:"+err.Error())
+		LogInfo(&Logger.debug, "watch add error:"+err.Error())
 		panic("watch add error:" + err.Error())
 	}
 	eventChan := make(chan struct{})
@@ -175,20 +155,14 @@ func (a mClient) WatchLock_file(LockerChan chan struct{}, Md5Mon map[string]stri
 			}
 
 		case err := <-watcher.Errors:
-			LogInfo(&Logger.pgm, "INFO:", "PGM watch error:"+err.Error())
+			LogInfo(&Logger.debug, "PGM watch error:"+err.Error())
 			panic("PGM watch error:" + err.Error())
 		}
 	}
 }
 
 func (a mClient) WatchDebounce(LockerChan chan struct{}, eventChan <-chan struct{}) {
-	defer func() {
-		if err := recover(); err != nil {
-			LogInfo(&Logger.pgm, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-			msgbox("Watch Debounce Fail")
-			os.Exit(0)
-		}
-	}()
+	defer RecoverLog()
 	timer := time.NewTimer(time.Minute * 5)
 	defer timer.Stop()
 	for {
@@ -210,51 +184,41 @@ func (a mClient) WatchDebounce(LockerChan chan struct{}, eventChan <-chan struct
 }
 
 func (a mClient) PGM_checkfile(LockerChan, Restart_XOIS chan struct{}, Md5Map map[string]string) {
-	defer func() {
-		if err := recover(); err != nil {
-			LogInfo(&Logger.pgm, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-			msgbox("PGM Check File Fail")
-			os.Exit(0)
-		}
-	}()
+	defer RecoverLog()
 	LockerChan <- struct{}{}
 	for {
 		select {
 		case <-a.ctx.Done():
 			return
 		case <-LockerChan:
-			var err_list = []config.KV{}
+			var err_list = []KV{}
 			var b = true
-			STATUS.mu.RLock()
-			pgm := STATUS.Data.MasterMap.PGM
-			STATUS.mu.RUnlock()
+			pgm := STATUS_GET(&STATUS.MasterMap.PGM).(FileMap_struct)
 			for path, md5master := range Md5Map {
 				rel, _ := filepath.Rel(filepath.Join(config.MasterDir, pgm.PGM), path)
 				curentXOISFile := filepath.Join(config.XoisPath, rel)
 				md5file, err := script.GetMD5(curentXOISFile)
 				if err != nil || !strings.EqualFold(md5file, md5master) {
-					err_list = append(err_list, config.KV{Key: rel, Value: md5master})
+					err_list = append(err_list, KV{Key: rel, Value: md5master})
 					b = false
-					LogInfo(&Logger.pgm, "ERROR:", "MD5", md5file, err)
+					LogInfo(&Logger.debug, "MD5", md5file, err)
 				}
 			}
-			LogInfo(&Logger.pgm, "ERROR:", "error_list", err_list)
+			LogInfo(&Logger.pgm, "error_list", err_list)
 			if b {
-				setStatus(keyPGM, config.FileMap_struct{PGM: pgm.PGM, Color: "OK", MD5: pgm.MD5, URL: pgm.URL})
+				STATUS_PUT(&STATUS.MasterMap.PGM, FileMap_struct{PGM: pgm.PGM, Color: "OK", MD5: pgm.MD5, URL: pgm.URL})
 				continue
 			}
 
-			STATUS.mu.RLock()
-			lockerState := STATUS.Data.Locker_PGM.Value
-			STATUS.mu.RUnlock()
+			lockerState := STATUS_GET(&STATUS.Locker_PGM.Value).(string)
 			if strings.EqualFold(strings.ToLower(lockerState), "unlock") {
 				text := "File Fail :"
 				for _, i := range err_list {
 					text += "\n" + i.Key + " : " + i.Value
 				}
 				text += "\n"
-				LogInfo(&Logger.pgm, "ERROR:", "File Fail"+string(text))
-				setStatus(keyLocker_PGM, &config.Locker_state{Value: "Unlock", Color: "Fail"})
+				LogInfo(&Logger.pgm, "File Fail"+string(text))
+				STATUS_PUT(&STATUS.Locker_PGM, Locker_state{Value: "Unlock", Color: "Fail"})
 				continue
 			}
 			Restart_XOIS <- struct{}{}
@@ -265,7 +229,7 @@ func (a mClient) PGM_checkfile(LockerChan, Restart_XOIS chan struct{}, Md5Map ma
 	}
 }
 
-func (a mClient) UpdatePGM(Restart_XOIS chan struct{}, pgm string, files []config.KV) bool {
+func (a mClient) UpdatePGM(Restart_XOIS chan struct{}, pgm string, files []KV) bool {
 	now := time.Now().Format("2006_01_02_15_04_05")
 	var text_log []string
 	move_status := true
@@ -286,7 +250,7 @@ func (a mClient) UpdatePGM(Restart_XOIS chan struct{}, pgm string, files []confi
 			}
 			md5, err := script.GetMD5(src)
 			if err != nil || md5 != f.Value {
-				LogInfo(&Logger.pgm, "ERROR:", src, "File Fail", err)
+				LogInfo(&Logger.debug, src, "File Fail", err)
 				return false
 			}
 			backup := filepath.Join("D:\\PGM_Backup", now, f.Key)

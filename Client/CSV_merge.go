@@ -20,7 +20,7 @@ func (a mClient) mergeManager(MergeRuning *atomic.Bool) {
 	MergeRuning.Store(true)
 	defer func() {
 		MergeRuning.Store(false)
-		setStatus(keyMerge, config.Locker_state{
+		STATUS_PUT(&STATUS.Merge, Locker_state{
 			Value: "Stop",
 			Color: "Fail",
 		})
@@ -130,7 +130,7 @@ func (a mClient) heart(JobQueue chan string) {
 			} else if err != nil {
 				merge_state = "Fail"
 			}
-			setStatus(keyMerge, config.Locker_state{
+			STATUS_PUT(&STATUS.Merge, Locker_state{
 				Value: countCSVFiles(config.UploadRoot),
 				Color: merge_state,
 			})
@@ -192,11 +192,11 @@ func (a mClient) ProcessCSV(JobQueue <-chan string) {
 				}
 				semaphore <- struct{}{}
 				wgFile.Add(1)
-				go a.dispatchToLot(lot, config.CsvRow{
+				go a.dispatchToLot(lot, CsvRow{
 					File_name: filepath.Base(file),
 					Header:    header,
 					Data:      row,
-					RawFile: &config.RawFileStatus{
+					RawFile: &RawFileStatus{
 						Wg:     &wgFile,
 						Result: &result,
 					},
@@ -225,14 +225,14 @@ func (a mClient) ProcessCSV(JobQueue <-chan string) {
 type WorkerCountStruct struct {
 	State atomic.Bool
 	mu    sync.RWMutex
-	ch    chan config.CsvRow
+	ch    chan CsvRow
 }
 
 var mutexWorkerCount = sync.RWMutex{}
 var WorkerCount = make(map[string]*WorkerCountStruct)
 var semaphore = make(chan struct{}, 300)
 
-func (a mClient) dispatchToLot(lot string, row config.CsvRow) {
+func (a mClient) dispatchToLot(lot string, row CsvRow) {
 	defer func() { <-semaphore }()
 	defer func() {
 		if r := recover(); r != nil {
@@ -241,8 +241,8 @@ func (a mClient) dispatchToLot(lot string, row config.CsvRow) {
 			LogInfo(&Logger.merge, "ERROR:", "Channal Close")
 		}
 	}()
-	actual, loaded := Lot_chan.LoadOrStore(lot, make(chan config.CsvRow, 100))
-	ch := actual.(chan config.CsvRow)
+	actual, loaded := Lot_chan.LoadOrStore(lot, make(chan CsvRow, 100))
+	ch := actual.(chan CsvRow)
 	if !loaded {
 		// Nếu có thằng khác nhanh chân hơn cộng trước, vòng lặp sẽ chạy lại để check lại 'current'
 		go LotWriterClient(a.ctx, lot, ch)

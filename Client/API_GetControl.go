@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -30,6 +32,13 @@ type Command struct {
 	UUID   string          `json:"uuid"`
 	Action string          `json:"action"`
 	Data   json.RawMessage `json:"data"`
+}
+
+type FileAction struct {
+	Mode   string `json:"mode"`
+	Dst    string `json:"dst"`
+	SRC    string `json:"src"`
+	Option string `json:"option"`
 }
 
 var controlListSkip = struct {
@@ -96,7 +105,7 @@ func PingPong(ctx context.Context, cancel context.CancelFunc) {
 
 // Api GetPingPong
 func GetControl(cancel context.CancelFunc) (*PingResponse, error) {
-	url := fmt.Sprintf("http://%s:%s/api/GetPingPong?ID=%s", config.IP.Load(), config.MasterPort, ID)
+	url := fmt.Sprintf("http://%s:%s/api/GetPingPong?ID=%s", config.IP.Load(), config.MasterPort, ID+"_"+STATUS_GET(STATUS.MesID).(string))
 
 	var httpClient = &http.Client{
 		Timeout: 5 * time.Second,
@@ -107,13 +116,12 @@ func GetControl(cancel context.CancelFunc) (*PingResponse, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	var result PingResponse
+	err = json.NewDecoder(resp.Body).Decode(&result)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("status not ok: %d", resp.StatusCode)
 	}
-
-	var result PingResponse
-	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +133,7 @@ func Dispacht(cancel context.CancelFunc, ControlType string, msg Command) {
 	_, ok := controlListSkip.Data[msg.UUID]
 	controlListSkip.mu.RUnlock()
 	payload := &clientPost{
-		ID:   ID,
+		ID:   ID + "_" + STATUS_GET(STATUS.MesID).(string),
 		UUID: msg.UUID,
 		Type: ControlType,
 	}
@@ -146,14 +154,14 @@ func Dispacht(cancel context.CancelFunc, ControlType string, msg Command) {
 		err = handlelocker_state("lockercrc", msg)
 
 	case "pgm_change":
-		var Data config.FileMap_struct
+		var Data FileMap_struct
 		err = json.Unmarshal(msg.Data, &Data)
 		if err == nil {
 			err = handlePGMchange(Data)
 		}
 
 	case "crc_change":
-		var Data config.RegMap_struct
+		var Data RegMap_struct
 		err = json.Unmarshal(msg.Data, &Data)
 		if err == nil {
 			err = handleCRCchange(Data)
@@ -165,10 +173,42 @@ func Dispacht(cancel context.CancelFunc, ControlType string, msg Command) {
 		}
 
 	case "cmd":
-		Cmd(start, "cmd", "/c", msg.Action)
+		if strings.Contains(msg.Action, "||") {
+			arg := strings.Split(msg.Action, "||")
+			exec.Command(arg[0], arg[1:]...).Start()
+		} else {
+			s := time.Now().Format("20060102_150405")
+			cmdText := fmt.Sprintf(`chcp 65001 > nul && %s > D:\SendFile\%s_%s_cmdlog.log`, msg.Action, ID, s)
+			exec.Command("cmd", "/C", cmdText).Start()
+		}
+
+	case `powershell`:
+		var out []byte
+		cmd := exec.Command(
+			"powershell",
+			"-NoProfile",
+			"-ExecutionPolicy", "Bypass",
+			"-Command",
+			msg.Action,
+		)
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			HideWindow:    true,       // Ẩn cửa sổ
+			CreationFlags: 0x08000000, // Không tạo cửa sổ mới
+		}
+		out, err = cmd.CombinedOutput()
+		LogInfo(
+			&Logger.debug,
+			"CMD",
+			nil,
+			fmt.Sprintf(
+				"Path=%s Args=%#v",
+				cmd.Path,
+				cmd.Args,
+			), err, out,
+		)
 	}
 	if err != nil {
-		LogInfo(&Logger.connect, "ERROR: Control ", ControlType, msg.Action, err)
+		LogInfo(&Logger.debug, "ERROR: Control ", ControlType, msg.Action, err)
 		return
 	} else {
 		LogInfo(&Logger.connect, "PASS: Control ", ControlType, msg.Action)
@@ -203,14 +243,10 @@ func SendStatusFunc(ctx context.Context) {
 
 		case <-SendStatus:
 			fmt.Println("Send Status")
-			cur := isCurrentCRC.Load().(string)
-			cur = strings.TrimSpace(strings.ToUpper(cur))
-			LockMap(&STATUS.mu)
-			STATUS.Data.CurrentCRC = cur
-			data, _ := json.Marshal(*STATUS.Data)
-			UnlockMap(&STATUS.mu)
+			tmp := STATUS_GET(&STATUS).(STATUS_struct)
+			data, _ := json.Marshal(tmp)
 			payload := &clientPost{
-				ID:   ID,
+				ID:   ID + "_" + tmp.MesID,
 				Type: "status",
 				Data: data,
 			}

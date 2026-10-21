@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -85,7 +86,7 @@ func LogInfo(p *atomic.Pointer[log.Logger], v ...any) {
 	logMu.Lock()
 	defer logMu.Unlock()
 	logs := recentLogs[l]
-	if slices.Contains(logs, msg) {
+	if slices.Contains(logs, msg) && (p != &Logger.Debug || p != &Logger.AOI) {
 		return
 	}
 	logs = append(logs, msg)
@@ -155,5 +156,17 @@ func keepLastLogs(folder string, maxFiles int) {
 
 	for _, f := range files[maxFiles:] {
 		os.Remove(f.Name)
+	}
+}
+
+func RecoverLog() {
+	if r := recover(); r != nil {
+		i := fmt.Sprintf(
+			"[%s] PANIC: %v\n%s\n",
+			time.Now().Format("2006-01-02 15:04:05"),
+			r,
+			debug.Stack(),
+		)
+		LogInfo(&Logger.Debug, i)
 	}
 }

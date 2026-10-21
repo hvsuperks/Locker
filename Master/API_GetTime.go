@@ -9,5 +9,5 @@ import (
 func GetTime(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Unix()
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("%d", now)))
+	w.Write(fmt.Appendf(nil, "%d", now))
 }

@@ -46,12 +46,12 @@ func main() {
 	// Khởi tạo khung Service
 	s, err := GetService(ServiceName, AutoUpdatePath)
 	if err != nil {
-		LogUnique("ERROR: Init service framework failed:", err)
+		Loginfo("ERROR: Init service framework failed:", err)
 		return
 	}
 	// Bắt đầu vòng đời chính của Windows Service
 	if err := s.Run(); err != nil {
-		LogUnique("ERROR: Service run failed:", err)
+		Loginfo("ERROR: Service run failed:", err)
 	}
 }
 
@@ -118,14 +118,18 @@ func OpenUDP50000() error {
 
 var HttpGetCMD = atomic.Value{}
 
+type udpStruct struct {
+	Locker     string `json:"locker"`
+	UiLocker   string `json:"uilocker"`
+	Aoi        string `json:"aoi"`
+	UiAoi      string `json:"uiaoi"`
+	AutoUpdate string `json:"update"`
+}
+
 func ListenMasterUDP() {
 	for {
-		defer func() {
-			if r := recover(); r != nil {
-				LogUnique(fmt.Sprintf("panic: %v", r))
-			}
-		}()
-		HttpGetCMD.Store("")
+		defer RecoverLog()
+		defer HttpGetCMD.Store("")
 		addr := net.UDPAddr{
 			Port: AutoUpdatePort,
 			IP:   net.IPv4zero, // nghe toàn bộ
@@ -142,40 +146,44 @@ func ListenMasterUDP() {
 			if err != nil {
 				continue
 			}
-			var msg struct {
-				Locker     string `json:"locker"`
-				UiLocker   string `json:"uilocker"`
-				Aoi        string `json:"aoi"`
-				UiAoi      string `json:"uiaoi"`
-				AutoUpdate string `json:"update"`
-			}
+			var msg udpStruct
 			if err := json.Unmarshal(buf[:n], &msg); err != nil {
 				continue
 			}
 			ip := remoteAddr.IP.To4().String()
+			httpDownload = fmt.Sprintf("http://%s:%s/master", ip, MasterPort)
+			HttpGetCMD.Store(fmt.Sprintf("http://%s:%s/serviceGetCMD?id=", ip, MasterPort))
 			if ip != IP.Load().(string) {
 				IP.Store(ip)
-				httpDownload = fmt.Sprintf("http://%s:%s/master", ip, MasterPort)
-				HttpGetCMD.Store(fmt.Sprintf("http://%s:%s/serviceGetCMD?id=", ip, MasterPort))
 			}
-
-			if msg.UiLocker != "" && msg.UiLocker != AppUi.Ver.Load().(string) {
-				AppUi.UpdateChan <- fmt.Sprintf("%s/_internal.zip|%s/Ui_%s.exe", httpDownload, httpDownload, msg.UiLocker)
-
-			}
-			LogUnique(msg.Locker, AppLocker.Ver.Load())
-			if msg.Locker != AppLocker.Ver.Load().(string) {
-				AppLocker.UpdateChan <- fmt.Sprintf("%s/locker_%s.exe", httpDownload, msg.Locker)
+			checkupdate(msg, httpDownload)
+			isHostPot.Store(time.Now())
+			if UDPrepeatMSG != msg {
+				muUDPrepeatMSG.Lock()
+				UDPrepeatMSG = msg
+				muUDPrepeatMSG.Unlock()
 			}
 
 		}
 	}
 }
 
+func checkupdate(msg udpStruct, httpDownload string) {
+	if msg.UiLocker != "" && msg.UiLocker != AppUi.Ver.Load().(string) {
+		AppUi.UpdateChan <- fmt.Sprintf("%s/_internal.zip|%s/Ui_%s.exe", httpDownload, httpDownload, msg.UiLocker)
+
+	}
+	Loginfo(msg.Locker, AppLocker.Ver.Load())
+	if msg.Locker != AppLocker.Ver.Load().(string) {
+		AppLocker.UpdateChan <- fmt.Sprintf("%s/locker_%s.exe", httpDownload, msg.Locker)
+	}
+
+}
+
 func DownloadFile(url, path string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			LogUnique(fmt.Sprintf("panic: %v", r))
+			Loginfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -230,7 +238,7 @@ func Cmd(mode bool, name string, args ...string) error {
 func Unzip(zipPath, Temp string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			LogUnique(fmt.Sprintf("panic: %v", r))
+			Loginfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -277,7 +285,7 @@ func checkSignApp() windows.Handle {
 func RegWrite(path string, name string, value string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			LogUnique(fmt.Sprintf("panic: %v", r))
+			Loginfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -305,13 +313,13 @@ var (
 
 func taskkill(AppName string) {
 	Cmd(run, "taskkill", "/F", "/IM", AppName)
-	LogUnique("Debug: Taskkil", AppName)
+	Loginfo("Debug: Taskkil", AppName)
 }
 
 func OpenApp(UpdatePath, ExePath string, Ver *atomic.Value) error {
 	defer func() {
 		if r := recover(); r != nil {
-			LogUnique(fmt.Sprintf("panic: %v", r))
+			Loginfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -381,7 +389,7 @@ func OpenApp(UpdatePath, ExePath string, Ver *atomic.Value) error {
 func CopyFileFull(src, dst string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			LogUnique(fmt.Sprintf("panic: %v", r))
+			Loginfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -431,7 +439,7 @@ func WaitUserLogin() {
 	for {
 		defer func() {
 			if r := recover(); r != nil {
-				LogUnique(fmt.Sprintf("panic: %v", r))
+				Loginfo(fmt.Sprintf("panic: %v", r))
 				time.Sleep(time.Second)
 			}
 		}()
@@ -464,7 +472,7 @@ func WaitUserLogin() {
 func ID_Read() string {
 	defer func() {
 		if r := recover(); r != nil {
-			LogUnique(fmt.Sprintf("panic: %v", r))
+			Loginfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -546,18 +554,18 @@ func SyncTime() {
 		IP := IP.Load().(string)
 		resp, err := http.Get("http://" + IP + ":" + MasterPort + "/api/GetTime")
 		if err != nil {
-			LogUnique("sync fail:", err)
+			Loginfo("sync fail:", err)
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			LogUnique("bad status:", resp.Status)
+			Loginfo("bad status:", resp.Status)
 			resp.Body.Close()
 			continue
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			LogUnique("read fail:", err)
+			Loginfo("read fail:", err)
 			resp.Body.Close()
 			continue
 		}
@@ -565,7 +573,7 @@ func SyncTime() {
 		resp.Body.Close()
 		serverTime, err := strconv.ParseInt(string(body), 10, 64)
 		if err != nil {
-			LogUnique("ParseInt fail:", err)
+			Loginfo("ParseInt fail:", err)
 			continue
 		}
 		// convert → time.Time

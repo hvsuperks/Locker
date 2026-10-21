@@ -73,7 +73,7 @@ func GET_crcEdit(w http.ResponseWriter, r *http.Request) {
 		"removemap": c,
 	})
 	if err != nil {
-		LogInfo(&Logger.API, "GET_crcEdit", "WebCRCEdit Execute", err)
+		LogInfo(&Logger.Debug, "GET_crcEdit", "WebCRCEdit Execute", err)
 		http.Error(w, "not found", 404)
 	}
 }

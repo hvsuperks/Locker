@@ -12,19 +12,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
 	"time"
 )
 
 func sendCSV(ctx context.Context) {
-	defer func() {
-		if err := recover(); err != nil {
-			LogInfo(&Logger.merge, "ERROR:", fmt.Sprintf("panic: %v\n%s", err, debug.Stack()))
-			msgbox("Send CSV Fail")
-			os.Exit(0)
-		}
-	}()
+	defer RecoverLog()
 	isDone := false
 	for {
 		machine_cd := script.RegRead(`SOFTWARE\CubeX\MES_SET`, `machine_cd`)
@@ -60,7 +53,7 @@ func sendCSV(ctx context.Context) {
 				prefix := lotFull[:len(lotFull)-5]
 				date := prefix[len(prefix)-6:]
 				md := lotFull[:len(lotFull)-11]
-				cd := config.TypeMap[ID[6:7]]
+				cd := config.TypeMap[ID[6:8]]
 				suffix := lotFull[len(lotFull)-2:]
 				ver := namesplit[2]
 				lot := prefix + "_" + cd + "_" + suffix
@@ -74,7 +67,7 @@ func sendCSV(ctx context.Context) {
 					os.Remove(path)
 					LogInfo(&Logger.merge, "INFO:", "upload OK", path)
 				} else {
-					LogInfo(&Logger.merge, "ERROR: Upload Fail", err)
+					LogInfo(&Logger.debug, "ERROR: Upload Fail", err)
 				}
 			}
 			return nil
