@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -12,10 +13,15 @@ import (
 
 var isUiOnline = atomic.Bool{}
 
+type colorStruct struct {
+	R int `json:"r"`
+	G int `json:"g"`
+	B int `json:"b"`
+}
 type uiChanStruct struct {
-	Value string `json:"value"`
-	State bool   `json:"state"`
-	Key   string `json:"key"`
+	Value string      `json:"value"`
+	State colorStruct `json:"state"`
+	Key   string      `json:"key"`
 }
 type UiReciver struct {
 	Type string `json:"type"`
@@ -41,6 +47,17 @@ func StartPipeServer() {
 	}
 }
 
+func color_style(state string) colorStruct {
+	switch strings.ToUpper(state) {
+	case "OK":
+		return colorStruct{R: 0, G: 0, B: 40}
+	case "FAIL":
+		return colorStruct{R: 150, G: 0, B: 0}
+	case "WIFI":
+		return colorStruct{R: 0, G: 90, B: 0}
+	}
+	return colorStruct{R: 50, G: 50, B: 50}
+}
 func pipeHandler(pipe net.Conn) {
 	defer pipe.Close()
 	isUiOnline.Store(true)
@@ -56,16 +73,18 @@ func pipeHandler(pipe net.Conn) {
 			tmpstatus := STATUS_GET(&STATUS).(STATUS_struct)
 			urlHome := httpDownload.Load().(string)
 			urlUpload := httpUpload.Load().(string)
+			con := "OK"
+			if !isDisconnect.Load() {
+				con = "FAIL"
+			}
 			data := map[string][]uiChanStruct{
 				"uichange": {
-					{Key: "ID", Value: "ID: " + ID, State: true},
-					{Key: "CRC", Value: "CRC: " + tmpstatus.MasterMap.CRC.CRC, State: tmpstatus.MasterMap.CRC.Color == "OK"},
-					{Key: "PGM", Value: "PGM: " + tmpstatus.MasterMap.PGM.PGM, State: tmpstatus.MasterMap.PGM.Color == "OK"},
-					{Key: "CRC_LOCKER", Value: "CRC Locker: " + STATUS.Locker_CRC.Value, State: STATUS.Locker_CRC.Color == "OK"},
-					{Key: "PGM_LOCKER", Value: "PGM Locker: " + STATUS.Locker_PGM.Value, State: STATUS.Locker_PGM.Color == "OK"},
-					{Key: "CONNECT", Value: connect, State: isDisconnect.Load()},
-					{Key: "VERSION", Value: "Go:" + Ver, State: true},
-					{Key: "MERGE", Value: STATUS.Merge.Value, State: STATUS.Merge.Color == "OK"},
+					{Key: "CRC", Value: "CRC: " + tmpstatus.MasterMap.CRC.CRC, State: color_style(tmpstatus.MasterMap.CRC.Color)},
+					{Key: "PGM", Value: "PGM: " + tmpstatus.MasterMap.PGM.PGM, State: color_style(tmpstatus.MasterMap.PGM.Color)},
+					{Key: "CRC_LOCKER", Value: "CRC Locker: " + STATUS.Locker_CRC.Value, State: color_style(STATUS.Locker_CRC.Color)},
+					{Key: "PGM_LOCKER", Value: "PGM Locker: " + STATUS.Locker_PGM.Value, State: color_style(STATUS.Locker_PGM.Color)},
+					{Key: "CONNECT", Value: connect, State: color_style(con)},
+					{Key: "MERGE", Value: STATUS.Merge.Value, State: color_style(STATUS.Merge.Color)},
 				},
 				"url": {
 					{Key: "home", Value: urlHome},
@@ -99,7 +118,12 @@ func dispacht(msg UiReciver, isVer *string) {
 	switch msg.Type {
 	case "click":
 		switch msg.Key {
-		case "ID":
+		case "id":
+			if f, err := os.Stat(HostpotPath); err == nil && !f.IsDir() {
+				os.Remove(HostpotPath)
+			} else {
+				os.WriteFile(HostpotPath, []byte{}, 0644)
+			}
 		case "pgm":
 		case "crc":
 		case "pgm_locker":

@@ -63,12 +63,8 @@ func ListenMasterUDP(Log chan []any) {
 			httpUpload.Store(fmt.Sprintf("http://%s:%s/api/uploadFile", ip, config.MasterPort))
 		}
 		AutoUpdateChange <- msg.AutoUpdate
-		isHostPot.Store(time.Now())
-		if UDPrepeatMSG != msg {
-			muUDPrepeatMSG.Lock()
-			UDPrepeatMSG = msg
-			muUDPrepeatMSG.Unlock()
-		}
+		UDPlistenState.Store(time.Now())
+
 	}
 }
 
@@ -130,7 +126,7 @@ func AutoUpdate(ctx context.Context) {
 				if script.DownloadFile(fmt.Sprintf(`%sLockerService_%s.exe`, httpDownload.Load().(string), v), `D:\LockerService.exe`) == nil {
 					VerAutoUpdate.Store("")
 					ServiceStatus.Store(false)
-					Cmd(run, `D:\LockerService.exe`)
+					Cmd(cmd_run, `D:\LockerService.exe`)
 					for i := range 32 {
 						if ServiceStatus.Load() {
 							break

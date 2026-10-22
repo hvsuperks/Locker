@@ -33,7 +33,9 @@ class PIPE():
         self.state.signal_bus.update_signal.emit(
             data["key"],
             data["value"],
-            data["state"]
+            data["r"],
+            data["g"],
+            data["b"]
         )
 
     def Heartbeat(self):

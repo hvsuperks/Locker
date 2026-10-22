@@ -15,21 +15,14 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QAction, QIcon
 
-STYLE_PASS = """
-background-color: rgb(0, 0, 40);
-color:white;
-font-weight:bold;
-padding-left:5px;
-padding-right:5px;
-"""
-
-STYLE_FAIL = """
-background-color: rgb(150, 0, 0);
-color:white;
-font-weight:bold;
-padding-left:5px;
-padding-right:5px;
-"""
+def get_style(r,g,b):
+    return f"""
+    background-color: rgb({r},{g},{b});
+    color:white;
+    font-weight:bold;
+    padding-left:5px;
+    padding-right:5px;
+    """
 
 class ClickLabel(QLabel):
     clicked = Signal()
@@ -151,7 +144,8 @@ class MainWindow(QWidget):
             "VERSION": self.lbl_ver,
             "MERGE": self.lbl_merge,
             "MSG" : self.lbl_msg ,
-            "VERSERVICE": self.lbl_verService
+            "VERSERVICE": self.lbl_verService,
+            "UIVERSION": self.lbl_verUi
         }
         bar.addStretch()
         bar.addWidget(self.lbl_id)
@@ -168,8 +162,7 @@ class MainWindow(QWidget):
         bar.addWidget(self.lbl_msg)
         root.addWidget(header)
         self.setAcceptDrops(True)
-        self.lbl_verUi.setText(f"Ui:{self.thisVer}")
-        self.lbl_verUi.setStyleSheet(STYLE_PASS)
+
     
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -184,7 +177,7 @@ class MainWindow(QWidget):
                 self.state.log.error(f"src=[ {src} ]")
             except Exception as e:
                 self.state.log.error(f"toLocalFile fail: {e}")
-            self.state.signal_bus.update_signal.emit("MSG", f"upload: {src}",True)
+            self.state.signal_bus.update_signal.emit("MSG", f"upload: {src}",0,0,40)
             now = datetime.now()
             s = now.strftime("%Y%m%d_%H%M%S")
             ID = "unknown"
@@ -213,18 +206,14 @@ class MainWindow(QWidget):
             except Exception as e:
                 i = f"Copy Upload Faill {e}"
                 self.state.log.error(i)
-                self.state.signal_bus.update_signal.emit("MSG",i,False)
+                self.state.signal_bus.update_signal.emit("MSG",i,150,0,0)
                 
-    def set_status(self, lblName, text, ok):
+    def set_status(self, lblName, text, r,g,b):
         lbl = self.labels.get(lblName)
         if lbl is None:
-            print(f"lbl {lblName} không tồn tại")
-            print(text,ok)
             return
         lbl.setText(str(text))
-        lbl.setStyleSheet(STYLE_PASS if ok else STYLE_FAIL)
-        print(f"{lblName} {text} {ok}")
-
+        lbl.setStyleSheet(get_style(r,g,b))
     def setPost(self):
 
         screen = QApplication.primaryScreen().availableGeometry()

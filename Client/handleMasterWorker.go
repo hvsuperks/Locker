@@ -10,9 +10,9 @@ import (
 )
 
 func handle_vnc() {
-	Cmd(run, "taskkill", "/F", "/IM", "winvnc.exe")
+	Cmd(cmd_run, "taskkill", "/F", "/IM", "winvnc.exe")
 	time.Sleep(time.Second)
-	Cmd(start, "C:\\Program Files\\uvnc bvba\\UltraVNC\\winvnc.exe", "-install")
+	Cmd(cmd_start, "C:\\Program Files\\uvnc bvba\\UltraVNC\\winvnc.exe", "-install")
 }
 
 func handlelocker_state(mode string, msg Command) error {

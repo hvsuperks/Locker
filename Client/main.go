@@ -38,12 +38,12 @@ func main() {
 	CurrentAppRootDir := filepath.Dir(CurrentAppRootPath)
 	// Đường dẫn tiêu chuẩn
 	// Nếu đường dẫn app đang ở ko phải ở thư mục quy định sẽ copy vào khu vực quy định và stopsc
-	Cmd(start, "taskkill", "/IM", "PGM_lock.exe", "/F")
-	Cmd(start, "taskkill", "/IM", "app_loop.exe", "/F")
-	Cmd(start, "taskkill", "/IM", "watcherdog.exe", "/F")
+	Cmd(cmd_start, "taskkill", "/IM", "PGM_lock.exe", "/F")
+	Cmd(cmd_start, "taskkill", "/IM", "app_loop.exe", "/F")
+	Cmd(cmd_start, "taskkill", "/IM", "watcherdog.exe", "/F")
 	time.Sleep(time.Second)
-	Cmd(start, "schtasks", "/delete", "/tn", config.DstAppName, "/f")
-	Cmd(start, "schtasks", "/delete", "/tn", config.DstAppName+"_", "/f")
+	Cmd(cmd_start, "schtasks", "/delete", "/tn", config.DstAppName, "/f")
+	Cmd(cmd_start, "schtasks", "/delete", "/tn", config.DstAppName+"_", "/f")
 	CheckModeApp(CurrentAppRootDir, CurrentAppRootPath)
 	//Check App có đang mở hay ko, nếu đang mở thì out luôn
 	mutex := check_sign_app()
@@ -69,7 +69,11 @@ func main() {
 	STATUS.ID = ID
 	STATUS.Model = model
 	STATUS.MesID = script.RegRead("SOFTWARE\\CubeX\\MES_SET", "machine_cd")
-
+	go func() {
+		time.Sleep(time.Second * 60)
+		i := script.RegRead("SOFTWARE\\CubeX\\MES_SET", "machine_cd")
+		STATUS_PUT(STATUS.MesID, i)
+	}()
 	// ListenMasterUDP
 	go ListenMasterUDP(Log)
 	go Start(ctx, cancel)
@@ -78,7 +82,7 @@ func main() {
 	go SendStatusFunc(ctx)
 	go copyTMPtoMes(ctx)
 	go SendFileToMaster(ctx)
-	isHostPot.Store(time.Now())
+	UDPlistenState.Store(time.Now())
 	go SendtoHostPost()
 	select {}
 }

@@ -164,13 +164,13 @@ func GetMachineList(perm string) SvelteST {
 			}
 			filename := strings.ToLower(file.Name())
 			if strings.HasSuffix(filename, ".exe") {
-				if strings.Contains(filename, "setup_locker") {
+				if strings.Contains(filename, "locker_") {
 					AddFile("lockerver", filename)
-				} else if strings.Contains(filename, "ui_ver") {
+				} else if strings.Contains(filename, "ui_") {
 					AddFile("uilockerver", filename)
-				} else if strings.Contains(filename, "setup_aoi") {
+				} else if strings.Contains(filename, "aoi_") {
 					AddFile("aoiver", filename)
-				} else if strings.Contains(filename, "uiaoi_ver") {
+				} else if strings.Contains(filename, "uiaoi_") {
 					AddFile("uiaoiver", filename)
 				}
 			}

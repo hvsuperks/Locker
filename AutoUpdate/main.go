@@ -39,6 +39,7 @@ var tmpZip = "C:\\Programdata\\Locker\\tmpLib"
 var thisVer = Ver
 
 func main() {
+	IDcurrent.Store("")
 	go InitLog()
 	if !ServiceRegister() {
 		return
@@ -46,12 +47,12 @@ func main() {
 	// Khởi tạo khung Service
 	s, err := GetService(ServiceName, AutoUpdatePath)
 	if err != nil {
-		Loginfo("ERROR: Init service framework failed:", err)
+		LogInfo("ERROR: Init service framework failed:", err)
 		return
 	}
 	// Bắt đầu vòng đời chính của Windows Service
 	if err := s.Run(); err != nil {
-		Loginfo("ERROR: Service run failed:", err)
+		LogInfo("ERROR: Service run failed:", err)
 	}
 }
 
@@ -74,7 +75,7 @@ func RegRead(path string, name string) string {
 	return val
 }
 
-func OpenUDP50000() error {
+func OpenPort(name string, port string, mode string) error {
 	// 1. Check rule tồn tại chưa
 	checkCmd := exec.Command(
 		"netsh",
@@ -82,7 +83,7 @@ func OpenUDP50000() error {
 		"firewall",
 		"show",
 		"rule",
-		"name=AppUpdate_10000",
+		"name="+name+"_"+port,
 	)
 	checkCmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,       // Ẩn cửa sổ
@@ -102,11 +103,11 @@ func OpenUDP50000() error {
 		"firewall",
 		"add",
 		"rule",
-		"name=AppUpdate_10000",
+		"name="+name+"_"+port,
 		"dir=in",
 		"action=allow",
-		"protocol=UDP",
-		"localport="+strconv.Itoa(AutoUpdatePort),
+		"protocol="+mode,
+		"localport="+port,
 	)
 	addCmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,       // Ẩn cửa sổ
@@ -157,39 +158,41 @@ func ListenMasterUDP() {
 				IP.Store(ip)
 			}
 			checkupdate(msg, httpDownload)
-			isHostPot.Store(time.Now())
+			UDPlistenState.Store(time.Now())
 			if UDPrepeatMSG != msg {
 				muUDPrepeatMSG.Lock()
 				UDPrepeatMSG = msg
 				muUDPrepeatMSG.Unlock()
 			}
-
 		}
 	}
 }
 
+var lockerUpdateState = atomic.Bool{}
+var uiUpdateState = atomic.Bool{}
+
 func checkupdate(msg udpStruct, httpDownload string) {
 	if msg.UiLocker != "" && msg.UiLocker != AppUi.Ver.Load().(string) {
 		AppUi.UpdateChan <- fmt.Sprintf("%s/_internal.zip|%s/Ui_%s.exe", httpDownload, httpDownload, msg.UiLocker)
-
+		uiUpdateState.Store(true)
+	} else {
+		uiUpdateState.Store(false)
 	}
-	Loginfo(msg.Locker, AppLocker.Ver.Load())
+	LogInfo(msg.Locker, AppLocker.Ver.Load())
 	if msg.Locker != AppLocker.Ver.Load().(string) {
 		AppLocker.UpdateChan <- fmt.Sprintf("%s/locker_%s.exe", httpDownload, msg.Locker)
+		lockerUpdateState.Store(true)
+	} else {
+		lockerUpdateState.Store(false)
 	}
 
 }
 
 func DownloadFile(url, path string) error {
-	defer func() {
-		if r := recover(); r != nil {
-			Loginfo(fmt.Sprintf("panic: %v", r))
-			time.Sleep(time.Second)
-		}
-	}()
+	defer RecoverLog()
 	//fmt.Println("Download :" + url)
 	var GetTimeOut = &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 50 * time.Second,
 	}
 	resp, err := GetTimeOut.Get(url)
 	if err != nil {
@@ -219,26 +222,31 @@ func DownloadFile(url, path string) error {
 	return err
 }
 
-var run = true
-var start = false
+var Cmd_run = 1
+var Cmd_start = 2
+var Cmd_out = 3
 
-func Cmd(mode bool, name string, args ...string) error {
+func Cmd(mode int, name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,       // Ẩn cửa sổ
 		CreationFlags: 0x08000000, // Không tạo cửa sổ mới
 	}
-	if mode == run {
-		return cmd.Run()
-	} else {
-		return cmd.Start()
+	switch mode {
+	case Cmd_run:
+		return nil, cmd.Run()
+	case Cmd_start:
+		return nil, cmd.Start()
+	case Cmd_out:
+		return cmd.CombinedOutput()
 	}
+	return nil, nil
 }
 
 func Unzip(zipPath, Temp string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			Loginfo(fmt.Sprintf("panic: %v", r))
+			LogInfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -285,7 +293,7 @@ func checkSignApp() windows.Handle {
 func RegWrite(path string, name string, value string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			Loginfo(fmt.Sprintf("panic: %v", r))
+			LogInfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -312,14 +320,14 @@ var (
 )
 
 func taskkill(AppName string) {
-	Cmd(run, "taskkill", "/F", "/IM", AppName)
-	Loginfo("Debug: Taskkil", AppName)
+	Cmd(Cmd_run, "taskkill", "/F", "/IM", AppName)
+	LogInfo("Debug: Taskkil", AppName)
 }
 
 func OpenApp(UpdatePath, ExePath string, Ver *atomic.Value) error {
 	defer func() {
 		if r := recover(); r != nil {
-			Loginfo(fmt.Sprintf("panic: %v", r))
+			LogInfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -389,7 +397,7 @@ func OpenApp(UpdatePath, ExePath string, Ver *atomic.Value) error {
 func CopyFileFull(src, dst string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			Loginfo(fmt.Sprintf("panic: %v", r))
+			LogInfo(fmt.Sprintf("panic: %v", r))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -439,7 +447,7 @@ func WaitUserLogin() {
 	for {
 		defer func() {
 			if r := recover(); r != nil {
-				Loginfo(fmt.Sprintf("panic: %v", r))
+				LogInfo(fmt.Sprintf("panic: %v", r))
 				time.Sleep(time.Second)
 			}
 		}()
@@ -470,12 +478,7 @@ func WaitUserLogin() {
 }
 
 func ID_Read() string {
-	defer func() {
-		if r := recover(); r != nil {
-			Loginfo(fmt.Sprintf("panic: %v", r))
-			time.Sleep(time.Second)
-		}
-	}()
+	defer RecoverLog()
 	path := "C:\\Program Files\\uvnc bvba\\UltraVNC\\ultravnc.ini"
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -554,18 +557,18 @@ func SyncTime() {
 		IP := IP.Load().(string)
 		resp, err := http.Get("http://" + IP + ":" + MasterPort + "/api/GetTime")
 		if err != nil {
-			Loginfo("sync fail:", err)
+			LogInfo("sync fail:", err)
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			Loginfo("bad status:", resp.Status)
+			LogInfo("bad status:", resp.Status)
 			resp.Body.Close()
 			continue
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			Loginfo("read fail:", err)
+			LogInfo("read fail:", err)
 			resp.Body.Close()
 			continue
 		}
@@ -573,15 +576,15 @@ func SyncTime() {
 		resp.Body.Close()
 		serverTime, err := strconv.ParseInt(string(body), 10, 64)
 		if err != nil {
-			Loginfo("ParseInt fail:", err)
+			LogInfo("ParseInt fail:", err)
 			continue
 		}
 		// convert → time.Time
 		t := time.Unix(serverTime, 0)
 
 		// set system time (Windows)
-		Cmd(run, "powershell", "-Command", fmt.Sprintf("Set-Date -Date \"%s\"", t.Format(time.RFC3339)))
-		Cmd(run, "powershell", "-Command", "Set-TimeZone -Id 'SE Asia Standard Time'")
+		Cmd(Cmd_run, "powershell", "-Command", fmt.Sprintf("Set-Date -Date \"%s\"", t.Format(time.RFC3339)))
+		Cmd(Cmd_run, "powershell", "-Command", "Set-TimeZone -Id 'SE Asia Standard Time'")
 		return
 	}
 }
@@ -620,12 +623,12 @@ func RemoveHP() {
 
 	// Khởi tạo lệnh chạy PowerShell
 	// -Command "-" cho phép nhận script từ stdin hoặc truyền trực tiếp chuỗi
-	Cmd(run, "powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	Cmd(start, "taskkill", "/IM", "wscript.exe", "/f")
-	Cmd(start, "taskkill", "/IM", "script.exe", "/f")
+	Cmd(Cmd_run, "powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	Cmd(Cmd_start, "taskkill", "/IM", "wscript.exe", "/f")
+	Cmd(Cmd_start, "taskkill", "/IM", "script.exe", "/f")
 	a := []string{"Backup_mes", "copdatatudong", "Ontop_Hourly", "OntopSilent", "updatabackupkho", "updatabackupkho", "VNC"}
 	for _, i := range a {
-		Cmd(run, "schtasks", "/delete", "/tn", i, "/f")
+		Cmd(Cmd_run, "schtasks", "/delete", "/tn", i, "/f")
 	}
 	homeDir, _ := os.UserHomeDir()
 	startupDir := filepath.Join(homeDir, "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
@@ -638,7 +641,7 @@ func RemoveHP() {
 			files2, _ := os.ReadDir(fullname)
 			for _, f := range files2 {
 				fullname2 := filepath.Join(startupDir, file.Name(), f.Name())
-				Cmd(run, "taskkill", "/IM", f.Name(), "/F")
+				Cmd(Cmd_run, "taskkill", "/IM", f.Name(), "/F")
 				time.Sleep(50 * time.Millisecond)
 				os.Remove(fullname2)
 			}

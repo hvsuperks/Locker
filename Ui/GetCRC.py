@@ -353,7 +353,7 @@ class UIWatcher:
                 else:
                     try:
                         crc = value.replace("CRC:", "").strip()
-                        self.state.signal_bus.update_signal.emit("MSG",f"Current {value} ",True)
+                        self.state.signal_bus.update_signal.emit("MSG",f"Current {value} ",0,0,40)
                         self.state.send_queue.put({
                             "type": "crc",
                             "key": crc
@@ -401,6 +401,6 @@ class CRCChecker(UIWatcher):
     def on_change(self, old, new):
         with self.state.CRCLock:
             self.state.CRC = new
-        self.state.signal_bus.update_signal.emit("MSG",f"CRC Changed: {old} -> {new}",True)
+        self.state.signal_bus.update_signal.emit("MSG",f"CRC Changed: {old} -> {new}",0,0,40)
 
 

@@ -60,7 +60,7 @@ class UploadFile():
                 self.state.log.error(f"{url}/n{file_path}")
                 i = f"Upload failed: {r.status_code} {r.reason} {r.text}"
                 self.state.log.error(i)
-                self.state.signal_bus.update_signal.emit("MSG",i,False)
+                self.state.signal_bus.update_signal.emit("MSG",i,150,0,0)
                 return False
-            self.state.signal_bus.update_signal.emit("MSG","Upload PASS",True)
+            self.state.signal_bus.update_signal.emit("MSG","Upload PASS",0,0,40)
             return True

@@ -25,15 +25,13 @@ class PIPE():
             ).start()
         
         
-    def uichange(self,data):
-        if data["key"] == "ID" and self.ID != data["value"]:
-            self.ID = data["value"][-9:]
+    def uichange(self,key,value,r,g,b):
+        if key == "ID" and self.ID != value:
+            self.ID = value[-9:]
             with self.state.IDLock:
                 self.state.ID = self.ID
         self.state.signal_bus.update_signal.emit(
-            data["key"],
-            data["value"],
-            data["state"]
+            key,value,r,g,b
         )
 
     def Heartbeat(self):
@@ -53,18 +51,11 @@ class PIPE():
                 )
                 while True:
                     win32file.WriteFile(cast(int, pipe),thisverEncode )
-                    
-                    rc, data = win32file.ReadFile(cast(int,pipe), 1024)
+                    rc, data = win32file.ReadFile(cast(int,pipe), 4096)
                     data = cast(bytes, data)
-                    ver = data.decode("utf-8")
-                    if isVer != ver:
-                        d ={
-                            "key":"VERSERVICE",
-                            "value":f"SC:{ver}",
-                            "state":True
-                        }
-                        self.uichange(d)
-                        isVer = ver
+                    datas = json.loads(data.decode("utf-8"))
+                    for item in datas:
+                         self.uichange(item["key"],item["value"],item["state"]["r"],item["state"]["g"],item["state"]["b"])
                     time.sleep(0.5)
 
             except Exception as e:
@@ -76,10 +67,8 @@ class PIPE():
                 d ={
                     "key":"VERSERVICE",
                     "value":"SC:None",
-                    "state":False
                 }
-                isVer = "None"
-                self.uichange(d)
+                self.uichange(d["key"],d["value"],150,0,0)
                 time.sleep(0.5)
 
     def sendLocker(self):
@@ -92,20 +81,19 @@ class PIPE():
                     "key": self.thisVer
                 }
                 time.sleep(0.5)
-            try:
-                payload = (
-                    json.dumps(data, ensure_ascii=False)
-                    + "\n"
-                ).encode("utf-8")
-                win32file.WriteFile(cast(int,self.pipeLocker), payload)
-            except Exception:
-                self.pipeLocker = None
-                d ={
-                    "key":"VERSION",
-                    "value":"GO:None",
-                    "state":False
-                }
-                self.uichange(d)
+            while True:
+                if self.pipeLocker is None:
+                    time.sleep(0.5)
+                    continue
+                try:
+                    payload = (
+                        json.dumps(data, ensure_ascii=False)
+                        + "\n"
+                    ).encode("utf-8")
+                    win32file.WriteFile(cast(int,self.pipeLocker), payload)
+                except Exception:
+                    self.pipeLocker = None
+                    time.sleep(0.5)
                 
     def LockerConnect(self):
         while True:
@@ -129,7 +117,7 @@ class PIPE():
                         match k:
                             case "uichange":
                                 for item in v:
-                                    self.uichange(item)
+                                    self.uichange(item["key"],item["value"],item["state"]["r"],item["state"]["g"],item["state"]["b"])
                             case "url":
                                 for item in v:
                                     if item.get("key") == "home":

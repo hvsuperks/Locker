@@ -1,3 +1,3 @@
 package main
 
-const Ver = `9.2.36`
+const Ver = `9.2.53`

@@ -15,7 +15,7 @@ VER = ver
 upload_root = r"D:\SendFile\uploadQueue" #r"D:\SendFile"
 
 class SignalBus(QObject):
-    update_signal = Signal(str, str, bool)
+    update_signal = Signal(str, str, int,int,int)
     
 logging.basicConfig(
     level=logging.INFO,

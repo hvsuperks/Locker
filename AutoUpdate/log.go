@@ -61,7 +61,7 @@ var (
 	logMu      sync.Mutex
 )
 
-func Loginfo(args ...any) {
+func LogInfo(args ...any) {
 
 	_, file, line, _ := runtime.Caller(1)
 	msg := fmt.Sprintf(
@@ -153,6 +153,6 @@ func RecoverLog() {
 			r,
 			debug.Stack(),
 		)
-		Loginfo(i)
+		LogInfo(i)
 	}
 }

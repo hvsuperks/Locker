@@ -2,64 +2,31 @@ package main
 
 import (
 	"Locker/config"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
-var srv *http.Server
-var isHostPot = atomic.Value{}
-var mulisten = atomic.Bool{}
-var UDPrepeatMSG = udpStruct{}
-var muUDPrepeatMSG = sync.RWMutex{}
+var UDPlistenState = atomic.Value{}
+var HostpotPath = `C:\programdata\locker\hostpot`
 
-func StartServer(mux *http.ServeMux) {
-	if !mulisten.CompareAndSwap(false, true) {
-		return
-	}
-	defer mulisten.Store(false)
-	srv = &http.Server{
-		Addr:    ":" + config.MasterPort,
-		Handler: mux,
-	}
-
-	srv.ListenAndServe()
-}
-
-func StopServer() {
-	defer RecoverLog()
-	if mulisten.Load() {
-		srv.Shutdown(context.Background())
-	}
+type udpMsgStruct struct {
+	IP  string    `json:"ip"`
+	Msg udpStruct `json:"msg"`
 }
 
 func SendtoHostPost() {
-	time.Sleep(15 * time.Second)
-	mux := http.NewServeMux() // Khuyên dùng Mux riêng thay vì http mặc định
-	mux.HandleFunc(`GET /api/getUDP`, UDPrepeat)
-	OpenUDP10001(`UDP_Hostport`, config.MasterPort, "TCP")
 	for {
-		t := isHostPot.Load().(time.Time)
-		if time.Since(t) < 14*time.Second {
-			go StartServer(mux)
-			time.Sleep(2 * time.Second)
-		} else {
-			StopServer()
+		if time.Since(UDPlistenState.Load().(time.Time)) > 14*time.Second {
 			url := "http://192.168.137.1:50001/api/getUDP"
-
 			var httpClient = &http.Client{
 				Timeout: 5 * time.Second,
 			}
-
 			resp, err := httpClient.Get(url)
 			if err != nil {
-				LogInfo(&Logger.debug, err)
-				time.Sleep(time.Second)
 				continue
 			}
 			defer resp.Body.Close()
@@ -85,20 +52,4 @@ func SendtoHostPost() {
 		}
 
 	}
-}
-
-type udpMsgStruct struct {
-	IP  string    `json:"ip"`
-	Msg udpStruct `json:"msg"`
-}
-
-func UDPrepeat(w http.ResponseWriter, r *http.Request) {
-	muUDPrepeatMSG.RLock()
-	defer muUDPrepeatMSG.RUnlock()
-	msg := udpMsgStruct{
-		IP:  config.IP.Load().(string),
-		Msg: UDPrepeatMSG,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(msg)
 }

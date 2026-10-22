@@ -184,7 +184,7 @@ class MainWindow(QWidget):
                 self.state.log.error(f"src=[ {src} ]")
             except Exception as e:
                 self.state.log.error(f"toLocalFile fail: {e}")
-            self.state.signal_bus.update_signal.emit("MSG", f"upload: {src}",True)
+            self.state.signal_bus.update_signal.emit("MSG", f"upload: {src}",0,0,40)
             now = datetime.now()
             s = now.strftime("%Y%m%d_%H%M%S")
             ID = "unknown"
@@ -212,7 +212,7 @@ class MainWindow(QWidget):
             except Exception as e:
                 i = f"Copy Upload Faill {e}"
                 self.state.log.error(i)
-                self.state.signal_bus.update_signal.emit("MSG",i,False)
+                self.state.signal_bus.update_signal.emit("MSG",i,150,0,0)
                 
     def set_status(self, lblName, text, ok):
         lbl = self.labels.get(lblName)

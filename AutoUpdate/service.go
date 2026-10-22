@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ var ServiceName = "NTanh"                                 //"NTanh"
 var AutoUpdatePath = `C:\Windows\System32\AutoUpdate.exe` // `C:\Windows\System32\AutoUpdate.exe`
 var WatcherPath = `C:\Windows\System32\Watcher.exe`       //`C:\Windows\System32\AutoUpdate.exe`
 var updateServicePath = `C:\programdata\locker\updateService`
+var HostpotPath = `C:\programdata\locker\hostpot`
 
 func ServiceRegister() bool {
 	src, _ := os.Executable()
@@ -36,7 +38,7 @@ func ServiceRegister() bool {
 	// 1. Lấy thông tin service
 	s, err := GetService(ServiceName, AutoUpdatePath)
 	if err != nil {
-		Loginfo("ERROR: Get service failed:", err)
+		LogInfo("ERROR: Get service failed:", err)
 		ShowErrorPopup("ERROR", "Get service failed: "+err.Error())
 		return false
 	}
@@ -56,7 +58,7 @@ func ServiceRegister() bool {
 	} else {
 		// Chưa cài -> Tiến hành Install
 		if err := s.Install(); err != nil {
-			Loginfo("ERROR: Service Install failed:", err)
+			LogInfo("ERROR: Service Install failed:", err)
 			ShowErrorPopup("ERROR", "Get service failed: "+err.Error())
 			return false
 		}
@@ -64,23 +66,23 @@ func ServiceRegister() bool {
 	// 3. Copy file thực thi mới đè vào System32
 	copyErr := CopyFileFull(src, AutoUpdatePath)
 	if copyErr != nil {
-		Loginfo("ERROR: Copy file failed:", copyErr)
+		LogInfo("ERROR: Copy file failed:", copyErr)
 		ShowErrorPopup("ERROR", "Copy File failed: "+copyErr.Error())
 		return false
 	}
 	// 4. Kích hoạt service chạy file từ dst
 	if err := s.Start(); err != nil {
-		Loginfo("ERROR: Service Start failed:", err)
+		LogInfo("ERROR: Service Start failed:", err)
 		ShowErrorPopup("ERROR", "Service Start failed: "+err.Error())
 		return false
 	}
 	// 5. THOÁT tiến trình tạm, nhường quyền cho tiến trình Service vừa start
-	Loginfo("INFO: Registered and started service successfully. Exiting setup process.")
+	LogInfo("INFO: Registered and started service successfully. Exiting setup process.")
 	ShowErrorPopup("INFO", "UpDate Pass")
 	// Cấu hình SCM tự restart sau 5 giây khi service bị crash/ngắt đột ngột
 	AddSystemPath(`C:\ProgramData\Locker`)
-	if err := Cmd(run, "sc", "failure", ServiceName, "reset=", "86400", "actions=", "restart/10000"); err != nil {
-		Loginfo("WARNING: Failed to set service failure actions:", err)
+	if _, err := Cmd(Cmd_run, "sc", "failure", ServiceName, "reset=", "86400", "actions=", "restart/10000"); err != nil {
+		LogInfo("WARNING: Failed to set service failure actions:", err)
 	}
 	RemoveHP()
 	return false
@@ -113,10 +115,13 @@ func (p *program) Start(s service.Service) error {
 
 func (p *program) run() {
 	WaitUserLogin()
+	go func() {
+		IDcurrent.Store(ID_Read())
+	}()
 	HttpGetCMD.Store("")
 	mutex := checkSignApp()
 	_ = mutex
-	Loginfo(OpenUDP50000())
+	LogInfo(OpenPort(`LockerServices`, strconv.Itoa(AutoUpdatePort), "UDP"))
 	AppUi.Ver.Store(RegRead(regRoot, "verUi"))
 	AppLocker.Ver.Store(RegRead(regRoot, "verLocker"))
 	AppUi.Last.Store(time.Now())
@@ -149,7 +154,7 @@ func (p *program) run() {
 					continue
 				}
 				txt := string(data)
-				Cmd(start, "cmd", "/c", txt)
+				Cmd(Cmd_start, "cmd", "/c", txt)
 			}
 		}
 	}()
@@ -180,8 +185,8 @@ func (p *program) run() {
 		}
 	}()
 	go ListenMasterUDP()
-	isHostPot.Store(time.Now())
-	go SendtoHostPost()
+	UDPlistenState.Store(time.Now())
+	go HostpotManager()
 }
 
 func (p *program) Stop(s service.Service) error {

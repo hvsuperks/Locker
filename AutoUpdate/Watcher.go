@@ -27,7 +27,7 @@ func Watcher(ctxWatcher context.Context) {
 
 				defer func() {
 					if r := recover(); r != nil {
-						Loginfo(fmt.Sprintf("panic: %v", r))
+						LogInfo(fmt.Sprintf("panic: %v", r))
 						time.Sleep(time.Second)
 					}
 				}()
@@ -39,28 +39,28 @@ func Watcher(ctxWatcher context.Context) {
 						if time.Since(lastLocker) < 30*time.Second {
 							continue
 						}
-						Loginfo("Debug:", "Watcher.go:42", `AppLocker Update`, url)
+						LogInfo("Debug:", "Watcher.go:42", `AppLocker Update`, url)
 						if err := DownloadFile(url, AppLocker.UpdatePath); err == nil {
-							Loginfo(fmt.Sprintf("INFO: DownloadFile Update Locker %s", url))
+							LogInfo(fmt.Sprintf("INFO: DownloadFile Update Locker %s", url))
 							lastLocker = time.Now()
 						} else {
-							Loginfo(fmt.Sprintf("ERROR: DownloadFile %s \n Err: %v ", url, err))
+							LogInfo(fmt.Sprintf("ERROR: DownloadFile %s \n Err: %v ", url, err))
 						}
 
 					case i := <-AppUi.UpdateChan:
 						if isupdateUi.Load() {
 							continue
 						}
-						if time.Since(lastUiUpdate.Load().(time.Time)) < 30*time.Second {
+						if time.Since(lastUiUpdate.Load().(time.Time)) < 10*time.Second {
 							continue
 						}
 						isupdateUi.Store(true)
-						Loginfo(i)
+						LogInfo(i)
 						go UpdateUI_Download(i, &isupdateUi, &lastUiUpdate)
 
 					default:
 						if _, err := os.Stat(AppLocker.UpdatePath); err == nil {
-							Loginfo("debug", `AppLocker.UpdatePath: `, AppLocker.UpdatePath, `stat`, err)
+							LogInfo("debug", `AppLocker.UpdatePath: `, AppLocker.UpdatePath, `stat`, err)
 							isShutdownLocker.Store(true)
 							running := true
 							for range 21 {
@@ -79,7 +79,7 @@ func Watcher(ctxWatcher context.Context) {
 								go func() {
 									AppLocker.Last.Store(time.Now())
 									if err := OpenApp(AppLocker.UpdatePath, AppLocker.ExePath, &AppLocker.Ver); err != nil {
-										Loginfo(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
+										LogInfo(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
 									}
 									AppLocker.Last.Store(time.Now())
 								}()
@@ -87,7 +87,7 @@ func Watcher(ctxWatcher context.Context) {
 						} else {
 							last, _ := AppLocker.Last.Load().(time.Time)
 							if time.Since(last) > 3*time.Second {
-								Loginfo("debug", `watcher.go:87`, last)
+								LogInfo("debug", `watcher.go:87`, last)
 								taskkill("locker.exe")
 								for range 21 {
 									time.Sleep(100 * time.Millisecond)
@@ -98,7 +98,7 @@ func Watcher(ctxWatcher context.Context) {
 								go func() {
 									AppLocker.Last.Store(time.Now())
 									if err := OpenApp(AppLocker.UpdatePath, AppLocker.ExePath, &AppLocker.Ver); err != nil {
-										Loginfo(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
+										LogInfo(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
 									}
 									AppLocker.Last.Store(time.Now())
 								}()
@@ -112,7 +112,7 @@ func Watcher(ctxWatcher context.Context) {
 							os.Remove(AppUi.ExePath)
 							if os.Rename(AppUi.UpdatePath, AppUi.ExePath) == nil {
 								if err := OpenApp(AppUi.UpdatePath, AppUi.ExePath, &AppUi.Ver); err != nil {
-									Loginfo(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
+									LogInfo(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
 								}
 								last := time.Now()
 								AppUi.Last.Store(last)
@@ -134,7 +134,7 @@ func Watcher(ctxWatcher context.Context) {
 								time.Sleep(500 * time.Millisecond)
 
 								if err := OpenApp(AppUi.UpdatePath, AppUi.ExePath, &AppUi.Ver); err != nil {
-									Loginfo(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
+									LogInfo(fmt.Sprintf("ERROR: Open App %s \n Err: %v ", AppLocker.ExePath, err))
 								}
 								last = time.Now()
 								AppUi.Last.Store(last)
@@ -161,10 +161,7 @@ func Watcher(ctxWatcher context.Context) {
 
 func UpdateUI_Download(s string, isupdate *atomic.Bool, last *atomic.Value) {
 	defer func() {
-		if r := recover(); r != nil {
-			Loginfo(fmt.Sprintf("panic: %v", r))
-			time.Sleep(time.Second)
-		}
+		RecoverLog()
 		isupdate.Store(false)
 		last.Store(time.Now())
 	}()
@@ -185,17 +182,21 @@ func UpdateUI_Download(s string, isupdate *atomic.Bool, last *atomic.Value) {
 				}
 				return nil
 			}) == nil {
-				if err := DownloadFile(url[1], AppUi.UpdatePath); err == nil {
-					taskkill("Ui.exe")
-				} else {
-					Loginfo(fmt.Sprintf("ERROR: DownloadFile %s \n Err: %v ", url[1], err))
+				for range 10 {
+					if err := DownloadFile(url[1], AppUi.UpdatePath); err == nil {
+						taskkill("Ui.exe")
+						break
+					} else {
+						LogInfo(fmt.Sprintf("ERROR: DownloadFile %s \n Err: %v ", url[1], err))
+					}
+					time.Sleep(time.Second)
 				}
 			}
 		} else {
-			Loginfo(fmt.Sprintf("ERROR: Lib Extrac %s → %s \n Err: %v ", libzip, tmpZip, err))
+			LogInfo(fmt.Sprintf("ERROR: Lib Extrac %s → %s \n Err: %v ", libzip, tmpZip, err))
 		}
 	} else {
-		Loginfo(fmt.Sprintf("ERROR: DownloadFile %s \n Err: %v ", url[0], err))
+		LogInfo(fmt.Sprintf("ERROR: DownloadFile %s \n Err: %v ", url[0], err))
 	}
 	os.Remove(libzip)
 	os.RemoveAll(tmpZip)

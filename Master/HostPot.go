@@ -6,7 +6,6 @@ import (
 )
 
 func HostPort() {
-
 	// 1. Giả lập Web Probe (trả về đúng chuỗi "Microsoft Connect Test")
 	http.HandleFunc("/connecttest.txt", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
