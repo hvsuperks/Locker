@@ -20,6 +20,7 @@ type udpMsgStruct struct {
 
 func SendtoHostPost() {
 	for {
+		time.Sleep(time.Second * 2)
 		if time.Since(UDPlistenState.Load().(time.Time)) > 14*time.Second {
 			url := "http://192.168.137.1:50001/api/getUDP"
 			var httpClient = &http.Client{

@@ -91,6 +91,7 @@ class PIPE():
                         + "\n"
                     ).encode("utf-8")
                     win32file.WriteFile(cast(int,self.pipeLocker), payload)
+                    break
                 except Exception:
                     self.pipeLocker = None
                     time.sleep(0.5)
@@ -128,6 +129,7 @@ class PIPE():
                                             self.state.URLUpload = item.get("value")
 
             except Exception as e:
+                self.state.log.error(f"Locker Pipe {e}")
                 try:
                     win32file.CloseHandle(cast(int,self.pipeLocker))
                 except:

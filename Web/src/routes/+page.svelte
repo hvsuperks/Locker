@@ -1,8 +1,14 @@
 <script>
+    
 import { onMount } from 'svelte';
+
   // --- DỮ LIỆU TRẠNG THÁI (Svelte 5 Runes) ---
   let groups = $state([]);
-  let Status = $state({})
+  let Status = $state({});
+  let headerURL = "";
+  let registerURL = "";
+  let permURL = "";
+  let changepassURL = ""; 
   let cd = $state({
     "Aging":`00`,
     "AF":`10`, 
@@ -13,7 +19,7 @@ import { onMount } from 'svelte';
     "Fra-AF":`50`,
     "Fra-OIS":`60`, 
     "Flag":`70`,
-  })
+  });
   let actionControl = $state("command");
   let modelMap = $state({
     10840: "MD10840",
@@ -127,16 +133,21 @@ import { onMount } from 'svelte';
         console.error(e);
     }
   }
-  loadStatus();
-  setInterval(() => {
-      loadStatus();
-      const diff = Date.now() - lastPing;
-      if (diff > 5000) {
-          console.log("Mất kết nối server");
-          connect = false;
-      }
-  }, 1000);
-
+  onMount(() => {
+    headerURL = `/api/webedit`
+    registerURL = `/register`
+    permURL = `/webPermission`
+    changepassURL = `/api/changepassword`
+    loadStatus();
+    setInterval(() => {
+        loadStatus();
+        const diff = Date.now() - lastPing;
+        if (diff > 5000) {
+            console.log("Mất kết nối server");
+            connect = false;
+        }
+    }, 1000);
+  })
   function copyToClipboard(text) {
     // Cách 1: Sử dụng API hiện đại nếu môi trường hỗ trợ (HTTPS / Localhost)
     if (navigator.clipboard && window.isSecureContext) {
@@ -187,10 +198,12 @@ import { onMount } from 'svelte';
     
   }
   function showAlert(msg, isSuccess = false) {
-        const alertBox = document.getElementById('alertBox');
-        alertBox.innerText = msg;
-        alertBox.className = `alert ${isSuccess ? 'alert-success' : 'alert-error'}`;
-        alertBox.style.display = 'block';
+            const toast = document.getElementById("toast");
+            toast.textContent = msg;
+            toast.classList.add("show");
+            setTimeout(() => {
+                toast.classList.remove("show");
+            }, 10000);
     }
   async function handleAction(type,action) {
     if (!confirm("Xác nhận thay đổi "+ type + ":" + action)) {
@@ -220,16 +233,45 @@ import { onMount } from 'svelte';
       }
 	}
 
-  async function commandSend(e){
+  async function commandSend(e,smode){
         const form = new FormData();
         form.append("id", document.getElementById("id").value);
         form.append("action", document.getElementById("code").value);
-        const res = await fetch("/api/command", {
+        let apoPath = "/api/command"
+        if (smode == "powershell"){
+            apoPath = "powershell"
+        }
+        const res = await fetch(apoPath, {
         method: "POST",
         body: form
         });
         const text = await res.text();
         console.log(text);
+        showAlert(text)
+  }
+
+    async function getFileClient(e){
+        const form = new FormData();
+        form.append("id", document.getElementById("id").value);
+        form.append("action","getfileclient");
+        form.append("dst", document.getElementById("dst").value);
+        form.append("src", document.getElementById("src").value);
+        form.append("list", document.getElementById("list").value);
+        form.append("timemin", document.getElementById("timemin").value);
+        form.append("timemax", document.getElementById("timemax").value);
+        form.append("datemin", document.getElementById("datemin").value);
+        form.append("datemax", document.getElementById("datemax").value);
+        if (form["dst"] == "" || form["id"] == "" || form["src"] == "src" ){
+          showAlert("Nhập đủ dữ liệu vào")
+          return;
+        }
+        const res = await fetch(`/api/getfileclient`, {
+        method: "POST",
+        body: form
+        });
+        const text = await res.text();
+        console.log(text);
+        showAlert(text)
   }
 
   async function lockerChange(id, mode, state) {
@@ -388,10 +430,7 @@ import { onMount } from 'svelte';
                 value === v ? "block" : "none";
         });
     }
-  const headerURL = `${window.location.origin}/api/webedit`
-  const registerURL = `${window.location.origin}/register`
-  const permURL = `${window.location.origin}/webPermission`
-  const changepassURL = `${window.location.origin}/api/changepassword`
+  
   async function Logout() {
     const res = await fetch("/logout", {
         method: "POST",
@@ -408,6 +447,7 @@ import { onMount } from 'svelte';
 <svelte:window onclick={closeMenu} />
 
 <main >
+    <div id="toast" class="toast"></div>
     <div class="TopBox">
       <div class="TopDiv">
         <button type="button" onclick={() => window.open(headerURL, "_blank")}>Web Api Edit</button>
@@ -415,41 +455,55 @@ import { onMount } from 'svelte';
         <button type="button" onclick={() => window.open(registerURL, "_blank")}>Register</button>
         <button type="button" onclick={() => window.open(permURL, "_blank")}>Permission config</button>
         <button type="button" onclick={() => window.open(changepassURL, "_blank")}>Change PassWord</button>
-        Data : {countData}
-        <!-- Nhập văn bản bình thường -->
-        let actionControl = "login";
-
         <select bind:value={actionControl}>
-            <option value="login">Login</option>
+            <option value="getfile">Get File</option>
             <option value="command">Command</option>
             <option value="ver">Version</option>
             <option value="remove">Remove</option>
             <option value="active">Active</option>
         </select>
-
-        {#if actionControl === "command"}
-              <div>
+        {#if actionControl === "getfile"}
+              <div class="code">
                   <input type="text" id="id" placeholder="id..." />
-                  <input type="text" id="code" placeholder="code..." />
-                  <button onclick={(e)=> commandSend(e)}>Send</button>
+                  <button onclick={(e)=> getFileClient(e)}>Get</button>
+                  <div class="codeInput">
+                    <div style="height:15px;">
+                      <input type="text" id="src" placeholder="Folder Gốc..." />
+                      <input type="text" id="dst" placeholder="folder đích..." />
+                    </div>
+                    <div style="height:15px;">
+                      <input type="text" id="list" placeholder="list file cần vd: a.exe|b.xls ..v..v.." />
+                      <input type="text" id="datemin" placeholder="File sau ngày - vd: 261027" />
+                      <input type="text" id="timemin" placeholder="file sau giờ ...061526" />
+                      <input type="text" id="datemax" placeholder="file trước ngày vd: 261027" />
+                      <input type="text" id="timemax" placeholder="file trước giờ... 061526" />
+                    </div>
+                  </div>
+              </div>
+          {:else if actionControl === "command"}
+              <div class="code">
+                  <input type="text" id="id" style="width: 130px;" placeholder="ID....." />
+                  <div style="display:flex;flex-direction:column; gap:2px;height:35px;">
+                    <button style="height:20px;padding:0px" onclick={(e)=> commandSend(e,"cmd") }>Cmd</button>
+                    <button style="height:20px;padding:0px" onclick={(e)=> commandSend(e,"powershell")}>PowerShell</button>
+                  </div>
+                  <input type="text" id="code" style="display: flex;height:35px;width:100%" placeholder="Code....." />
+                  
               </div>
           {:else if actionControl === "ver"}
-              <div>
+              <div class="code">
                   <input type="text" id="modeVer" placeholder="mode Ver" />
                   <input type="text" id="valueVer" placeholder="ver..." />
                   <button onclick={(e)=> postVer(e)}>Send</button>
               </div>
 
           {:else if actionControl === "active"}
-              <div>
+              <div class="code">
                   <input type="text" id="activeClient" placeholder="vd:168492" />
                   <button onclick={(e)=> activeClient(e, "ADD")}>Add</button>
                   <button onclick={(e)=> activeClient(e, "Remove")}>Remove</button>
               </div>
           {/if}
-          <span class="dot {natLoginState ? 'online' : 'offline'}"></span>
-          Report : {rp}
-          <div style="color:black ;" id="alertBox"></div>
       </div>
 
     </div>
@@ -622,6 +676,7 @@ import { onMount } from 'svelte';
     }
 
     .TopBox{
+      height:45px;
       padding: 20px;
       color: white;
       font-weight: bold;
@@ -630,17 +685,17 @@ import { onMount } from 'svelte';
     }
 
     .TopDiv{
+
       width: 100%;
       position: fixed;
       top: 0;        /* Dính ở đỉnh khi cuộn dọc xuống */
       left: 0;
       display: flex;
       align-items: center;
-      gap: 30px;
+      gap: 10px;
       padding: 10px;
       box-sizing: border-box;
       border-bottom: 1px solid #ccc; /* Đường kẻ phân cách (tùy chọn) */
-      z-index: 1000;
     }
 
     .item {
@@ -818,5 +873,73 @@ import { onMount } from 'svelte';
   .crc-text{
     font-size: 12px;
   }
-  
+  .TopDiv button {
+    text-align: center;
+    width: 80px;
+    height: 35px;
+    border: none;
+    border-radius: 6px;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+    font-weight: 300;
+    font-size: 13px;
+    transition: all 0.2s ease;
+  }
+
+  .TopDiv button:hover {
+      background: #1d4ed8;
+  }
+
+  .TopDiv button:active {
+      transform: scale(0.97);
+  }
+  .code {
+    display: flex;
+    flex: 1;
+    flex-wrap: nowrap;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+  .code input{
+    height: 35px;
+  }
+  .codeInput {
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    height:35px;
+  }
+
+  .codeInput >div{
+    display: flex;
+    justify-content: flex-start;
+    height:15px;
+  }
+
+  .codeInput input{
+    height:15px;
+  }
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+
+    background: #333;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s ease;
+
+    z-index: 9999;
+  }
+
+  .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+  }
 </style>

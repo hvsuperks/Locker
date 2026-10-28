@@ -24,13 +24,7 @@ func Watcher(ctxWatcher context.Context) {
 			return
 		default:
 			func() {
-
-				defer func() {
-					if r := recover(); r != nil {
-						LogInfo(fmt.Sprintf("panic: %v", r))
-						time.Sleep(time.Second)
-					}
-				}()
+				defer RecoverLog()
 				for {
 					select {
 					case <-ctxWatcher.Done():

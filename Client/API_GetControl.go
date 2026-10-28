@@ -2,12 +2,15 @@ package main
 
 import (
 	"Locker/config"
+	"Locker/script"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,6 +42,16 @@ type FileAction struct {
 	Dst    string `json:"dst"`
 	SRC    string `json:"src"`
 	Option string `json:"option"`
+}
+
+type getFileClientstruct struct {
+	Src     string `json:"src"`
+	Dst     string `json:"dst"`
+	List    string `json:"list"`
+	TimeMin string `json:"timemin"`
+	TimeMax string `json:"timemax"`
+	DateMin string `json:"datemin"`
+	DateMax string `json:"datemax"`
 }
 
 var controlListSkip = struct {
@@ -129,6 +142,7 @@ func GetControl(cancel context.CancelFunc) (*PingResponse, error) {
 }
 
 func Dispacht(cancel context.CancelFunc, ControlType string, msg Command) {
+	defer RecoverLog()
 	controlListSkip.mu.RLock()
 	_, ok := controlListSkip.Data[msg.UUID]
 	controlListSkip.mu.RUnlock()
@@ -143,6 +157,18 @@ func Dispacht(cancel context.CancelFunc, ControlType string, msg Command) {
 	}
 	var err error
 	err = nil
+	defer func() {
+		controlListSkip.mu.Lock()
+		controlListSkip.Data[payload.UUID] = struct{}{}
+		controlListSkip.mu.Unlock()
+		go ClientReport(*payload)
+		if err != nil {
+			LogInfo(&Logger.debug, "ERROR: Control ", ControlType, msg.Action, err)
+			return
+		} else {
+			LogInfo(&Logger.connect, "PASS: Control ", ControlType, msg.Action)
+		}
+	}()
 	switch ControlType {
 	case "resetVNC":
 		handle_vnc()
@@ -206,17 +232,92 @@ func Dispacht(cancel context.CancelFunc, ControlType string, msg Command) {
 				cmd.Args,
 			), err, out,
 		)
+	case `getfileclient`:
+		var Data getFileClientstruct
+		err = json.Unmarshal(msg.Data, &Data)
+		if err == nil {
+			LogInfo(&Logger.debug, fmt.Sprintf(`%+v\n`, Data))
+			f, er := os.Stat(Data.Src)
+			if er != nil {
+				err = er
+				return
+			}
+			tmpPath := `D:\copyTmp`
+			os.RemoveAll(tmpPath)
+			var dateMin = time.Date(1900, 1, 1, 1, 1, 1, 0, time.Local)
+			var dateMax = time.Now()
+			if len(Data.DateMin) == 6 {
+				dateMin, err = time.Parse("060102150405", Data.DateMin)
+			} else if len(Data.DateMin) == 8 {
+				dateMin, err = time.Parse("20060102150405", Data.DateMin)
+			} else {
+				Data.TimeMin = ""
+			}
+			if err == nil && len(Data.TimeMin) == 6 {
+				clock, er := time.Parse("150405", Data.TimeMin)
+				if er != nil {
+					err = er
+					return
+				} else {
+					t := time.Date(dateMin.Year(), dateMin.Month(), dateMin.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.Local)
+					dateMin = t
+				}
+			}
+			if len(Data.DateMax) == 6 {
+				dateMax, err = time.Parse("060102", Data.DateMax)
+			} else if len(Data.DateMax) == 8 {
+				dateMax, err = time.Parse("20060102", Data.DateMax)
+			} else {
+				Data.DateMax = ""
+			}
+			if err == nil && len(Data.TimeMax) == 6 {
+				clock, er := time.Parse("150405", Data.TimeMax)
+				if er != nil {
+					err = er
+					return
+				} else {
+					t := time.Date(dateMax.Year(), dateMax.Month(), dateMax.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.Local)
+					dateMax = t
+				}
+			}
+			listFile := strings.Split(Data.List, "|")
+			if f.IsDir() {
+				err = filepath.WalkDir(Data.Src, func(path string, d fs.DirEntry, err error) error {
+					defer RecoverLog()
+					if d.IsDir() {
+						return nil
+					}
+					info, _ := d.Info()
+					thistime := info.ModTime()
+					if len(listFile) > 0 {
+						ok := false
+						for _, p := range listFile {
+							if o, _ := filepath.Match(strings.TrimSpace(p), d.Name()); o {
+								ok = true
+								break
+							}
+						}
+						if !ok {
+							return nil
+						}
+					}
+					if thistime.After(dateMin) && thistime.Before(dateMax) {
+						rel, _ := filepath.Rel(Data.Src, path)
+						dst := filepath.Join(tmpPath, rel)
+						LogInfo(&Logger.debug, path, dst, script.CopyFileFull(path, dst).Error())
+					}
+					return nil
+				})
+				if err == nil {
+					os.Rename(tmpPath, `D:\SendFile\`+Data.Dst)
+				}
+			} else {
+				err = er
+			}
+		} else {
+			LogInfo(&Logger.debug, err)
+		}
 	}
-	if err != nil {
-		LogInfo(&Logger.debug, "ERROR: Control ", ControlType, msg.Action, err)
-		return
-	} else {
-		LogInfo(&Logger.connect, "PASS: Control ", ControlType, msg.Action)
-	}
-	controlListSkip.mu.Lock()
-	controlListSkip.Data[payload.UUID] = struct{}{}
-	controlListSkip.mu.Unlock()
-	go ClientReport(*payload)
 
 }
 

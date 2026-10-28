@@ -91,7 +91,7 @@ func pipeHandler(pipe net.Conn) {
 					{Key: "upload", Value: urlUpload},
 				},
 			}
-			pipe.SetWriteDeadline(time.Now().Add(3 * time.Second))
+			pipe.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			if err := enc.Encode(data); err != nil {
 				LogInfo(&Logger.debug, "Locker send Fail", err)
 				pipe.Close()

@@ -3,6 +3,7 @@ package main
 import (
 	"Locker/config"
 	"Locker/script"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -52,6 +53,56 @@ func POST_apiCommand(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 	LogInfo(&Logger.API, "cmd", Action, ID)
+}
+
+func POST_apiPowershell(w http.ResponseWriter, r *http.Request) {
+	ID := r.FormValue("id")
+	Action := r.FormValue("action")
+	if strings.ToLower(ID) == "master" {
+		Cmd(start, "powershell",
+			"-NoProfile",
+			"-ExecutionPolicy", "Bypass",
+			"-Command", Action)
+	} else {
+		go MultiClientSend(ID, "powershell", Action, nil)
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+	LogInfo(&Logger.API, "powershell", Action, ID)
+}
+
+type getFileClientstruct struct {
+	Src     string `json:"src"`
+	Dst     string `json:"dst"`
+	List    string `json:"list"`
+	TimeMin string `json:"timemin"`
+	TimeMax string `json:"timemax"`
+	DateMin string `json:"datemin"`
+	DateMax string `json:"datemax"`
+}
+
+func POST_getFileClient(w http.ResponseWriter, r *http.Request) {
+	ID := r.FormValue("id")
+	Action := r.FormValue("action")
+	Data := getFileClientstruct{
+		Src:     r.FormValue("src"),
+		Dst:     r.FormValue("dst"),
+		List:    r.FormValue("list"),
+		DateMin: r.FormValue("datemin"),
+		DateMax: r.FormValue("datemax"),
+		TimeMin: r.FormValue("timemin"),
+		TimeMax: r.FormValue("timemax"),
+	}
+	LogInfo(&Logger.API, "getfileclient", Action, ID, fmt.Sprintf(`%+v\n`, Data))
+	if Data.Src == "" || Data.Dst == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Fail"))
+		return
+	}
+	go MultiClientSend(ID, "getfileclient", Action, Data)
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+	LogInfo(&Logger.API, "getfileclient", Action, ID)
 }
 
 func POST_clientRemove(w http.ResponseWriter, r *http.Request) {

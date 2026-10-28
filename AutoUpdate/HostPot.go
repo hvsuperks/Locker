@@ -50,12 +50,12 @@ func StopServer() {
 	ps := `$connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows,ContentType=WindowsRuntime]::GetInternetConnectionProfile();
 $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile);
 $tetheringManager.StopTetheringAsync()`
-	exec.Command(
+	Cmd(Cmd_run,
 		"powershell",
 		"-NoProfile",
 		"-ExecutionPolicy", "Bypass",
 		"-Command", ps,
-	).Run()
+	)
 	if mulisten.Load() {
 		srv.Shutdown(context.Background())
 	}
@@ -89,7 +89,7 @@ func restart_network() {
 				ip := ipnet.IP.To4()
 				if ip != nil && ip[0] == 10 && ip[1] == 1 {
 					out, _ := Cmd(Cmd_out, `netsh`, `interface`, `set`, `interface`, fmt.Sprintf(`name="%s"`, iface.Name), "admin=disable")
-					LogInfo(Cmd_out, fmt.Sprintf(`netsh interface set interface  name="%s" admin=disable → %s`, iface.Name, string(out)))
+					LogInfo(Cmd_out, fmt.Sprintf(`netsh interface set interface  name="%s" admin=disable → %s`, iface.Name, out))
 					out, _ = Cmd(Cmd_run, `netsh`, `interface`, `set`, `interface`, fmt.Sprintf(`name="%s"`, iface.Name), "admin=enable")
 				}
 			}
@@ -143,7 +143,7 @@ $tetheringManager.StartTetheringAsync()`
 							"-ExecutionPolicy", "Bypass",
 							"-Command", ps,
 						)
-						status := strings.TrimSpace(string(out))
+						status := strings.TrimSpace(out)
 						LogInfo(`Bật Wifi`, status)
 						time.Sleep(time.Second)
 
@@ -209,6 +209,12 @@ $tetheringManager.StartTetheringAsync()`
 						IP.Store(ip)
 					}
 					checkupdate(result.Msg, httpDownload)
+					UDPlistenState.Store(time.Now())
+					if UDPrepeatMSG != result.Msg {
+						muUDPrepeatMSG.Lock()
+						UDPrepeatMSG = result.Msg
+						muUDPrepeatMSG.Unlock()
+					}
 				}
 				time.Sleep(time.Second * 3)
 			}
@@ -300,7 +306,7 @@ func ScanWifi() ([]Wifi, error) {
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(string(out), "\n")
+	lines := strings.Split(out, "\n")
 	var result []Wifi
 	var currentSSID string
 	for _, line := range lines {
@@ -335,6 +341,15 @@ func ScanWifi() ([]Wifi, error) {
 }
 
 func ConnectWifi() error {
+	out, _ := Cmd(
+		Cmd_out,
+		"netsh", "wlan", "show", "interfaces",
+	)
+	s := strings.ToLower(out)
+	if strings.Contains(s, "connected") || strings.Contains(s, "연결됨") {
+		return nil
+	}
+	LogInfo(out)
 	Cmd(Cmd_start,
 		"netsh", "interface", "set", "interface",
 		`name="Wi-Fi"`,
@@ -391,7 +406,7 @@ func ConnectWifi() error {
 			fmt.Sprintf("name=%s", wifi.SSID),
 		)
 		if err != nil {
-			LogInfo(wifi.SSID, string(out))
+			LogInfo(wifi.SSID, out)
 			continue
 		}
 		time.Sleep(5 * time.Second)
@@ -399,7 +414,7 @@ func ConnectWifi() error {
 			Cmd_out,
 			"netsh", "wlan", "show", "interfaces",
 		)
-		s := strings.ToLower(string(out))
+		s := strings.ToLower(out)
 		if strings.Contains(s, strings.ToLower(wifi.SSID)) &&
 			(strings.Contains(s, "connected") || strings.Contains(s, "연결됨")) {
 			LogInfo(wifi.SSID, wifi.Signal, "Connect OK")
@@ -411,7 +426,7 @@ func ConnectWifi() error {
 }
 
 func CurrentSSID() (string, bool) {
-	out, err := Cmd(Cmd_out,
+	s, err := Cmd(Cmd_out,
 		"netsh",
 		"wlan",
 		"show",
@@ -420,7 +435,6 @@ func CurrentSSID() (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	s := string(out)
 	if !strings.Contains(strings.ToLower(s), "connected") {
 		return "", false
 	}
@@ -527,7 +541,7 @@ catch {
 	).CombinedOutput()
 
 	LogInfo(fmt.Sprintf("err=%v", err))
-	LogInfo(fmt.Sprintf("out=%s", string(out)))
+	LogInfo(fmt.Sprintf("out=%s", out))
 
 	return err
 }
@@ -542,12 +556,11 @@ $tm = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windo
 Write-Output $tm.TetheringOperationalState
 `
 
-	out, err := exec.Command(
+	out, err := Cmd(Cmd_out,
 		"powershell",
 		"-NoProfile",
 		"-ExecutionPolicy", "Bypass",
 		"-Command", ps,
-	).CombinedOutput()
-
-	return strings.TrimSpace(string(out)), err
+	)
+	return strings.TrimSpace(out), err
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +24,8 @@ import (
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
+	"golang.org/x/text/encoding/korean"
+	"golang.org/x/text/transform"
 )
 
 //go:embed Watcher.exe
@@ -192,11 +195,11 @@ func DownloadFile(url, path string) error {
 	defer RecoverLog()
 	//fmt.Println("Download :" + url)
 	var GetTimeOut = &http.Client{
-		Timeout: 50 * time.Second,
+		Timeout: 150 * time.Second,
 	}
 	resp, err := GetTimeOut.Get(url)
 	if err != nil {
-		fmt.Println("Download " + err.Error())
+		LogInfo("Download " + err.Error())
 		return err
 	}
 	defer resp.Body.Close()
@@ -226,7 +229,7 @@ var Cmd_run = 1
 var Cmd_start = 2
 var Cmd_out = 3
 
-func Cmd(mode int, name string, args ...string) ([]byte, error) {
+func Cmd(mode int, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,       // Ẩn cửa sổ
@@ -234,13 +237,26 @@ func Cmd(mode int, name string, args ...string) ([]byte, error) {
 	}
 	switch mode {
 	case Cmd_run:
-		return nil, cmd.Run()
+		return "", cmd.Run()
 	case Cmd_start:
-		return nil, cmd.Start()
+		return "", cmd.Start()
 	case Cmd_out:
-		return cmd.CombinedOutput()
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return "", err
+		}
+		return CP949ToUTF8_(out), nil
 	}
-	return nil, nil
+	return "", nil
+}
+
+func CP949ToUTF8_(b []byte) string {
+	r := transform.NewReader(
+		bytes.NewReader(b),
+		korean.EUCKR.NewDecoder(),
+	)
+	res, _ := io.ReadAll(r)
+	return string(res)
 }
 
 func Unzip(zipPath, Temp string) error {

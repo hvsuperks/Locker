@@ -80,6 +80,8 @@ func apiManager(ctx context.Context, cancal context.CancelFunc) {
 	mux.HandleFunc("POST /api/modelconfig", Protect(perm_ModelChange, POST_modelConfig))
 	mux.HandleFunc("POST /api/clientremove", Protect(perm_RemoveClient, POST_clientRemove))
 	mux.HandleFunc("POST /api/command", POST_apiCommand)
+	mux.HandleFunc("POST /api/powershell", POST_apiPowershell)
+	mux.HandleFunc("POST /api/getfileclient", POST_getFileClient)
 
 	// Edit Web API
 	mux.HandleFunc("GET /api/webedit", func(w http.ResponseWriter, r *http.Request) {
